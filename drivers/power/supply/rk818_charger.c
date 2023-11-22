@@ -166,6 +166,14 @@ static int rk818_usb_power_get_property(struct power_supply *psy,
 	int ret;
 
 	switch (psp) {
+	case POWER_SUPPLY_PROP_ONLINE:
+		ret = regmap_read(cg->regmap, RK818_CHRG_CTRL_REG1, &reg);
+		if (ret) {
+			dev_err(cg->dev, "failed to read the charger state (%d)\n", ret);
+			return ret;
+		}
+		val->intval = !!(reg & RK818_CHRG_CTRL_REG1_CHRG_EN);
+		break;
 	case POWER_SUPPLY_PROP_PRESENT:
 		ret = regmap_read(cg->regmap, RK818_SUP_STS_REG, &reg);
 		if (ret)
@@ -268,6 +276,7 @@ static void rk818_usb_power_external_power_changed(struct power_supply *psy)
 }
 
 static enum power_supply_property rk818_usb_power_props[] = {
+	POWER_SUPPLY_PROP_ONLINE,
 	POWER_SUPPLY_PROP_PRESENT,
 	POWER_SUPPLY_PROP_HEALTH,
 	POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT,
