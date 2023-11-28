@@ -882,6 +882,7 @@ static enum power_supply_property rk818_bat_props[] = {
 	POWER_SUPPLY_PROP_CURRENT_NOW,
 	POWER_SUPPLY_PROP_VOLTAGE_NOW,
 	POWER_SUPPLY_PROP_PRESENT,
+	POWER_SUPPLY_PROP_ONLINE,
 	POWER_SUPPLY_PROP_HEALTH,
 	POWER_SUPPLY_PROP_CAPACITY,
 	POWER_SUPPLY_PROP_TEMP,
@@ -913,6 +914,7 @@ int rk818_battery_get_property(struct rk818_battery *di,
 			val->intval = VIRTUAL_VOLTAGE * 1000;
 		break;
 	case POWER_SUPPLY_PROP_PRESENT:
+	case POWER_SUPPLY_PROP_ONLINE:
 		val->intval = is_rk818_bat_exist(di);
 		if (di->pdata->bat_mode == MODE_VIRTUAL)
 			val->intval = VIRTUAL_PRESET;
