@@ -307,7 +307,7 @@
 		enable-gpios = <&gpio0 RK_PC7 GPIO_ACTIVE_HIGH>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&lcd_pwren_h &lcd0_rst_l>;
-		rotation = <90>;
+		rotation = <0>;
 		power-supply = <&vcc_3v3>;
 
 		ports {
