@@ -84,7 +84,10 @@ LDFLAGS_vmlinux			+= -static -pie --no-dynamic-linker -z notext
 endif
 
 cflags-y += $(call cc-option, -mno-check-zero-division)
+
+ifndef CONFIG_KASAN
 cflags-y += -fno-builtin-memcpy -fno-builtin-memmove -fno-builtin-memset
+endif
 
 load-y		= 0x9000000000200000
 bootvars-y	= VMLINUX_LOAD_ADDRESS=$(load-y)
@@ -138,6 +141,8 @@ vdso_install:
 	$(Q)$(MAKE) $(build)=arch/loongarch/vdso $@
 
 all:	$(notdir $(KBUILD_IMAGE))
+
+vmlinuz.efi: vmlinux.efi
 
 vmlinux.elf vmlinux.efi vmlinuz.efi: vmlinux
 	$(Q)$(MAKE) $(build)=$(boot) $(bootvars-y) $(boot)/$@

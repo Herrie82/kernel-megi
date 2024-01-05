@@ -184,7 +184,6 @@ enum scpi_drv_cmds {
 	CMD_SENSOR_VALUE,
 	CMD_SET_DEVICE_PWR_STATE,
 	CMD_GET_DEVICE_PWR_STATE,
-	CMD_SET_SYS_PWR_STATE,
 	CMD_MAX_COUNT,
 };
 
@@ -201,7 +200,6 @@ static int scpi_std_commands[CMD_MAX_COUNT] = {
 	SCPI_CMD_SENSOR_VALUE,
 	SCPI_CMD_SET_DEVICE_PWR_STATE,
 	SCPI_CMD_GET_DEVICE_PWR_STATE,
-	SCPI_CMD_SET_SYS_PWR_STATE,
 };
 
 static int scpi_legacy_commands[CMD_MAX_COUNT] = {
@@ -217,7 +215,6 @@ static int scpi_legacy_commands[CMD_MAX_COUNT] = {
 	LEGACY_SCPI_CMD_SENSOR_VALUE,
 	-1, /* SET_DEVICE_PWR_STATE */
 	-1, /* GET_DEVICE_PWR_STATE */
-	LEGACY_SCPI_CMD_SYS_PWR_STATE,
 };
 
 struct scpi_xfer {
@@ -234,8 +231,7 @@ struct scpi_xfer {
 
 struct scpi_chan {
 	struct mbox_client cl;
-	struct mbox_chan *rx_chan;
-	struct mbox_chan *tx_chan;
+	struct mbox_chan *chan;
 	void __iomem *tx_payload;
 	void __iomem *rx_payload;
 	struct list_head rx_pending;
@@ -509,7 +505,7 @@ static int scpi_send_message(u8 idx, void *tx_buf, unsigned int tx_len,
 	msg->rx_len = rx_len;
 	reinit_completion(&msg->done);
 
-	ret = mbox_send_message(scpi_chan->tx_chan, msg);
+	ret = mbox_send_message(scpi_chan->chan, msg);
 	if (ret < 0 || !rx_buf)
 		goto out;
 
@@ -783,12 +779,6 @@ static int scpi_device_set_power_state(u16 dev_id, u8 pstate)
 				 sizeof(dev_set), &stat, sizeof(stat));
 }
 
-static int scpi_sys_set_power_state(u8 pstate)
-{
-	return scpi_send_message(CMD_SET_SYS_PWR_STATE, &pstate,
-				 sizeof(pstate), NULL, 0);
-}
-
 static struct scpi_ops scpi_ops = {
 	.get_version = scpi_get_version,
 	.clk_get_range = scpi_clk_get_range,
@@ -805,7 +795,6 @@ static struct scpi_ops scpi_ops = {
 	.sensor_get_value = scpi_sensor_get_value,
 	.device_get_power_state = scpi_device_get_power_state,
 	.device_set_power_state = scpi_device_set_power_state,
-	.sys_set_power_state = scpi_sys_set_power_state,
 };
 
 struct scpi_ops *get_scpi_ops(void)
@@ -867,13 +856,8 @@ static void scpi_free_channels(void *data)
 	struct scpi_drvinfo *info = data;
 	int i;
 
-	for (i = 0; i < info->num_chans; i++) {
-		struct scpi_chan *pchan = &info->channels[i];
-
-		if (pchan->tx_chan != pchan->rx_chan)
-			mbox_free_channel(pchan->tx_chan);
-		mbox_free_channel(pchan->rx_chan);
-	}
+	for (i = 0; i < info->num_chans; i++)
+		mbox_free_channel(info->channels[i].chan);
 }
 
 static int scpi_remove(struct platform_device *pdev)
@@ -930,7 +914,6 @@ static int scpi_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct device_node *np = dev->of_node;
 	struct scpi_drvinfo *scpi_drvinfo;
-	bool use_mbox_names = false;
 
 	scpi_drvinfo = devm_kzalloc(dev, sizeof(*scpi_drvinfo), GFP_KERNEL);
 	if (!scpi_drvinfo)
@@ -943,14 +926,6 @@ static int scpi_probe(struct platform_device *pdev)
 	if (count < 0) {
 		dev_err(dev, "no mboxes property in '%pOF'\n", np);
 		return -ENODEV;
-	}
-	if (of_get_property(dev->of_node, "mbox-names", NULL)) {
-		use_mbox_names = true;
-		if (count != 2) {
-			dev_err(dev, "need exactly 2 mboxes with mbox-names\n");
-			return -ENODEV;
-		}
-		count /= 2;
 	}
 
 	scpi_drvinfo->channels =
@@ -1000,34 +975,15 @@ static int scpi_probe(struct platform_device *pdev)
 		mutex_init(&pchan->xfers_lock);
 
 		ret = scpi_alloc_xfer_list(dev, pchan);
-		if (ret)
-			return ret;
-
-		if (use_mbox_names) {
-			pchan->rx_chan = mbox_request_channel_byname(cl, "rx");
-			if (IS_ERR(pchan->rx_chan)) {
-				ret = PTR_ERR(pchan->rx_chan);
-				goto fail;
-			}
-			pchan->tx_chan = mbox_request_channel_byname(cl, "tx");
-			if (IS_ERR(pchan->rx_chan)) {
-				ret = PTR_ERR(pchan->tx_chan);
-				goto fail;
-			}
-		} else {
-			pchan->rx_chan = mbox_request_channel(cl, idx);
-			if (IS_ERR(pchan->rx_chan)) {
-				ret = PTR_ERR(pchan->rx_chan);
-				goto fail;
-			}
-			pchan->tx_chan = pchan->rx_chan;
+		if (!ret) {
+			pchan->chan = mbox_request_channel(cl, idx);
+			if (!IS_ERR(pchan->chan))
+				continue;
+			ret = PTR_ERR(pchan->chan);
+			if (ret != -EPROBE_DEFER)
+				dev_err(dev, "failed to get channel%d err %d\n",
+					idx, ret);
 		}
-		continue;
-
-fail:
-		if (ret != -EPROBE_DEFER)
-			dev_err(dev, "failed to get channel%d err %d\n",
-				idx, ret);
 		return ret;
 	}
 

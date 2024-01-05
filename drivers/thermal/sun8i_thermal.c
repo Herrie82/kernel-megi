@@ -14,7 +14,7 @@
 #include <linux/interrupt.h>
 #include <linux/module.h>
 #include <linux/nvmem-consumer.h>
-#include <linux/of_device.h>
+#include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/regmap.h>
 #include <linux/reset.h>
@@ -55,8 +55,6 @@
 #define SUN50I_THS_FILTER_TYPE(x)		(GENMASK(1, 0) & (x))
 #define SUN50I_H6_THS_PC_TEMP_PERIOD(x)		((GENMASK(19, 0) & (x)) << 12)
 #define SUN50I_H6_THS_DATA_IRQ_STS(x)		BIT(x)
-
-/* millidegree celsius */
 
 struct tsensor {
 	struct ths_device		*tmdev;
@@ -286,15 +284,10 @@ static int sun8i_ths_calibrate(struct ths_device *tmdev)
 	size_t callen;
 	int ret = 0;
 
-	calcell = devm_nvmem_cell_get(dev, "calibration");
+	calcell = nvmem_cell_get(dev, "calibration");
 	if (IS_ERR(calcell)) {
-		dev_err_probe(dev, PTR_ERR(calcell),
-			      "Failed to get calibration nvmem cell (%pe)\n",
-			      calcell);
-
 		if (PTR_ERR(calcell) == -EPROBE_DEFER)
 			return -EPROBE_DEFER;
-
 		/*
 		 * Even if the external calibration data stored in sid is
 		 * not accessible, the THS hardware can still work, although
@@ -314,8 +307,6 @@ static int sun8i_ths_calibrate(struct ths_device *tmdev)
 	caldata = nvmem_cell_read(calcell, &callen);
 	if (IS_ERR(caldata)) {
 		ret = PTR_ERR(caldata);
-		dev_err(dev, "Failed to read calibration data (%pe)\n",
-			caldata);
 		goto out;
 	}
 
@@ -323,6 +314,8 @@ static int sun8i_ths_calibrate(struct ths_device *tmdev)
 
 	kfree(caldata);
 out:
+	if (!IS_ERR(calcell))
+		nvmem_cell_put(calcell);
 	return ret;
 }
 
@@ -343,17 +336,13 @@ static int sun8i_ths_resource_init(struct ths_device *tmdev)
 		return PTR_ERR(base);
 
 	tmdev->regmap = devm_regmap_init_mmio(dev, base, &config);
-	if (IS_ERR(tmdev->regmap)) {
-		dev_err(dev, "Failed to init regmap (%pe)\n", tmdev->regmap);
+	if (IS_ERR(tmdev->regmap))
 		return PTR_ERR(tmdev->regmap);
-	}
 
 	if (tmdev->chip->has_bus_clk_reset) {
 		tmdev->reset = devm_reset_control_get(dev, NULL);
-		if (IS_ERR(tmdev->reset)) {
-			dev_err(dev, "Failed to get reset (%pe)\n", tmdev->reset);
+		if (IS_ERR(tmdev->reset))
 			return PTR_ERR(tmdev->reset);
-		}
 
 		ret = reset_control_deassert(tmdev->reset);
 		if (ret)
@@ -476,12 +465,8 @@ static int sun8i_ths_register(struct ths_device *tmdev)
 						      i,
 						      &tmdev->sensor[i],
 						      &ths_ops);
-		if (IS_ERR(tmdev->sensor[i].tzd)) {
-			dev_err(tmdev->dev,
-				"Failed to register sensor %d (%pe)\n",
-				i, tmdev->sensor[i].tzd);
+		if (IS_ERR(tmdev->sensor[i].tzd))
 			return PTR_ERR(tmdev->sensor[i].tzd);
-		}
 
 		devm_thermal_add_hwmon_sysfs(tmdev->dev, tmdev->sensor[i].tzd);
 	}
@@ -503,8 +488,6 @@ static int sun8i_ths_probe(struct platform_device *pdev)
 	tmdev->chip = of_device_get_match_data(&pdev->dev);
 	if (!tmdev->chip)
 		return -EINVAL;
-
-	platform_set_drvdata(pdev, tmdev);
 
 	ret = sun8i_ths_resource_init(tmdev);
 	if (ret)
@@ -530,10 +513,8 @@ static int sun8i_ths_probe(struct platform_device *pdev)
 	ret = devm_request_threaded_irq(dev, irq, NULL,
 					sun8i_irq_thread,
 					IRQF_ONESHOT, "ths", tmdev);
-	if (ret) {
-		dev_err(dev, "Failed to request irq (%d)\n", ret);
+	if (ret)
 		return ret;
-	}
 
 	return 0;
 }

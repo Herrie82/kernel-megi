@@ -18,6 +18,7 @@
 #define CCU_FEATURE_MMC_TIMING_SWITCH	BIT(6)
 #define CCU_FEATURE_SIGMA_DELTA_MOD	BIT(7)
 #define CCU_FEATURE_KEY_FIELD		BIT(8)
+#define CCU_FEATURE_CLOSEST_RATE	BIT(9)
 
 /* MMC timing mode switch bit */
 #define CCU_MMC_NEW_TIMING_MODE		BIT(30)
@@ -52,6 +53,11 @@ struct sunxi_ccu_desc {
 
 void ccu_helper_wait_for_lock(struct ccu_common *common, u32 lock);
 
+bool ccu_is_better_rate(struct ccu_common *common,
+			unsigned long target_rate,
+			unsigned long current_rate,
+			unsigned long best_rate);
+
 struct ccu_pll_nb {
 	struct notifier_block	clk_nb;
 	struct ccu_common	*common;
@@ -68,17 +74,5 @@ int devm_sunxi_ccu_probe(struct device *dev, void __iomem *reg,
 			 const struct sunxi_ccu_desc *desc);
 void of_sunxi_ccu_probe(struct device_node *node, void __iomem *reg,
 			const struct sunxi_ccu_desc *desc);
-
-struct ccu_rate_reset_nb {
-	struct notifier_block	clk_nb;
-	struct ccu_common	*common;
-
-	struct clk		*target_clk;
-	unsigned long		saved_rate;
-};
-
-#define to_ccu_rate_reset_nb(_nb) container_of(_nb, struct ccu_rate_reset_nb, clk_nb)
-
-int ccu_rate_reset_notifier_register(struct ccu_rate_reset_nb *rate_reset_nb);
 
 #endif /* _COMMON_H_ */

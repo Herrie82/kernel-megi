@@ -39,6 +39,18 @@ void ccu_helper_wait_for_lock(struct ccu_common *common, u32 lock)
 }
 EXPORT_SYMBOL_NS_GPL(ccu_helper_wait_for_lock, SUNXI_CCU);
 
+bool ccu_is_better_rate(struct ccu_common *common,
+			unsigned long target_rate,
+			unsigned long current_rate,
+			unsigned long best_rate)
+{
+	if (common->features & CCU_FEATURE_CLOSEST_RATE)
+		return abs(current_rate - target_rate) < abs(best_rate - target_rate);
+
+	return current_rate <= target_rate && current_rate > best_rate;
+}
+EXPORT_SYMBOL_NS_GPL(ccu_is_better_rate, SUNXI_CCU);
+
 /*
  * This clock notifier is called when the frequency of a PLL clock is
  * changed. In common PLL designs, changes to the dividers take effect
@@ -86,28 +98,6 @@ int ccu_pll_notifier_register(struct ccu_pll_nb *pll_nb)
 				     &pll_nb->clk_nb);
 }
 EXPORT_SYMBOL_NS_GPL(ccu_pll_notifier_register, SUNXI_CCU);
-
-static int ccu_rate_reset_notifier_cb(struct notifier_block *nb,
-				      unsigned long event, void *data)
-{
-	struct ccu_rate_reset_nb *rate_reset = to_ccu_rate_reset_nb(nb);
-
-	if (event == PRE_RATE_CHANGE) {
-		rate_reset->saved_rate = clk_get_rate(rate_reset->target_clk);
-	} else if (event == POST_RATE_CHANGE) {
-		clk_set_rate(rate_reset->target_clk, rate_reset->saved_rate);
-	}
-
-	return NOTIFY_DONE;
-}
-
-int ccu_rate_reset_notifier_register(struct ccu_rate_reset_nb *rate_reset_nb)
-{
-	rate_reset_nb->clk_nb.notifier_call = ccu_rate_reset_notifier_cb;
-
-	return clk_notifier_register(rate_reset_nb->common->hw.clk,
-				     &rate_reset_nb->clk_nb);
-}
 
 static int sunxi_ccu_probe(struct sunxi_ccu *ccu, struct device *dev,
 			   struct device_node *node, void __iomem *reg,

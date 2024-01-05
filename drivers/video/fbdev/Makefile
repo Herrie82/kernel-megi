@@ -122,14 +122,9 @@ obj-$(CONFIG_FB_VESA)             += vesafb.o
 obj-$(CONFIG_FB_EFI)              += efifb.o
 obj-$(CONFIG_FB_VGA16)            += vga16fb.o
 obj-$(CONFIG_FB_OF)               += offb.o
-obj-$(CONFIG_FB_MX3)		  += mx3fb.o
 obj-$(CONFIG_FB_DA8XX)		  += da8xx-fb.o
 obj-$(CONFIG_FB_SSD1307)	  += ssd1307fb.o
 obj-$(CONFIG_FB_SIMPLE)           += simplefb.o
 
 # the test framebuffer is last
 obj-$(CONFIG_FB_VIRTUAL)          += vfb.o
-
-obj-$(CONFIG_FB_SUN5I_EINK)       += sun5ieink.o
-sun5ieink-objs = sun5i-eink.o sun5i-eink-neon.o
-CFLAGS_sun5i-eink-neon.o	  += -march=armv7-a -mfloat-abi=softfp -mfpu=neon -ffreestanding -isystem $(shell $(CC) -print-file-name=include)

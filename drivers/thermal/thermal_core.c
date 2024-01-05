@@ -353,6 +353,9 @@ static void handle_thermal_trip(struct thermal_zone_device *tz, int trip_id)
 
 	__thermal_zone_get_trip(tz, trip_id, &trip);
 
+	if (trip.temperature == THERMAL_TEMP_INVALID)
+		return;
+
 	if (tz->last_temperature != THERMAL_TEMP_INVALID) {
 		if (tz->last_temperature < trip.temperature &&
 		    tz->temperature >= trip.temperature)
@@ -495,6 +498,25 @@ void thermal_zone_device_update(struct thermal_zone_device *tz,
 	mutex_unlock(&tz->lock);
 }
 EXPORT_SYMBOL_GPL(thermal_zone_device_update);
+
+/**
+ * thermal_zone_device_exec - Run a callback under the zone lock.
+ * @tz: Thermal zone.
+ * @cb: Callback to run.
+ * @data: Data to pass to the callback.
+ */
+void thermal_zone_device_exec(struct thermal_zone_device *tz,
+			      void (*cb)(struct thermal_zone_device *,
+					 unsigned long),
+			      unsigned long data)
+{
+	mutex_lock(&tz->lock);
+
+	cb(tz, data);
+
+	mutex_unlock(&tz->lock);
+}
+EXPORT_SYMBOL_GPL(thermal_zone_device_exec);
 
 static void thermal_zone_device_check(struct work_struct *work)
 {
@@ -667,7 +689,8 @@ int thermal_zone_bind_cooling_device(struct thermal_zone_device *tz,
 	if (result)
 		goto release_ida;
 
-	sprintf(dev->attr_name, "cdev%d_trip_point", dev->id);
+	snprintf(dev->attr_name, sizeof(dev->attr_name), "cdev%d_trip_point",
+		 dev->id);
 	sysfs_attr_init(&dev->attr.attr);
 	dev->attr.attr.name = dev->attr_name;
 	dev->attr.attr.mode = 0444;
@@ -676,7 +699,8 @@ int thermal_zone_bind_cooling_device(struct thermal_zone_device *tz,
 	if (result)
 		goto remove_symbol_link;
 
-	sprintf(dev->weight_attr_name, "cdev%d_weight", dev->id);
+	snprintf(dev->weight_attr_name, sizeof(dev->weight_attr_name),
+		 "cdev%d_weight", dev->id);
 	sysfs_attr_init(&dev->weight_attr.attr);
 	dev->weight_attr.attr.name = dev->weight_attr_name;
 	dev->weight_attr.attr.mode = S_IWUSR | S_IRUGO;
@@ -1246,7 +1270,7 @@ thermal_zone_device_register_with_trips(const char *type, struct thermal_trip *t
 		return ERR_PTR(-EINVAL);
 	}
 
-	if (num_trips > 0 && (!ops->get_trip_type || !ops->get_trip_temp) && !trips)
+	if (num_trips > 0 && !trips)
 		return ERR_PTR(-EINVAL);
 
 	if (!thermal_class)
@@ -1369,16 +1393,16 @@ free_tz:
 }
 EXPORT_SYMBOL_GPL(thermal_zone_device_register_with_trips);
 
-struct thermal_zone_device *thermal_zone_device_register(const char *type, int ntrips, int mask,
-							 void *devdata, struct thermal_zone_device_ops *ops,
-							 const struct thermal_zone_params *tzp, int passive_delay,
-							 int polling_delay)
+struct thermal_zone_device *thermal_tripless_zone_device_register(
+					const char *type,
+					void *devdata,
+					struct thermal_zone_device_ops *ops,
+					const struct thermal_zone_params *tzp)
 {
-	return thermal_zone_device_register_with_trips(type, NULL, ntrips, mask,
-						       devdata, ops, tzp,
-						       passive_delay, polling_delay);
+	return thermal_zone_device_register_with_trips(type, NULL, 0, 0, devdata,
+						       ops, tzp, 0, 0);
 }
-EXPORT_SYMBOL_GPL(thermal_zone_device_register);
+EXPORT_SYMBOL_GPL(thermal_tripless_zone_device_register);
 
 void *thermal_zone_device_priv(struct thermal_zone_device *tzd)
 {

@@ -44,8 +44,6 @@ source "drivers/staging/vt6655/Kconfig"
 
 source "drivers/staging/vt6656/Kconfig"
 
-source "drivers/staging/bes2600/Kconfig"
-
 source "drivers/staging/iio/Kconfig"
 
 source "drivers/staging/sm750fb/Kconfig"
@@ -79,7 +77,5 @@ source "drivers/staging/fieldbus/Kconfig"
 source "drivers/staging/qlge/Kconfig"
 
 source "drivers/staging/vme_user/Kconfig"
-
-source "drivers/staging/rtl8723cs/Kconfig"
 
 endif # STAGING

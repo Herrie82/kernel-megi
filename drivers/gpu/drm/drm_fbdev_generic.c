@@ -34,9 +34,9 @@ static int drm_fbdev_generic_fb_release(struct fb_info *info, int user)
 	return 0;
 }
 
-FB_GEN_DEFAULT_DEFERRED_SYS_OPS(drm_fbdev_generic,
-				drm_fb_helper_damage_range,
-				drm_fb_helper_damage_area);
+FB_GEN_DEFAULT_DEFERRED_SYSMEM_OPS(drm_fbdev_generic,
+				   drm_fb_helper_damage_range,
+				   drm_fb_helper_damage_area);
 
 static void drm_fbdev_generic_fb_destroy(struct fb_info *info)
 {
@@ -78,7 +78,6 @@ static int drm_fbdev_generic_helper_fb_probe(struct drm_fb_helper *fb_helper,
 	size_t screen_size;
 	void *screen_buffer;
 	u32 format;
-	u32 fb_start;
 	int ret;
 
 	drm_dbg_kms(dev, "surface width(%d), height(%d) and bpp(%d)\n",
@@ -110,7 +109,6 @@ static int drm_fbdev_generic_helper_fb_probe(struct drm_fb_helper *fb_helper,
 	drm_fb_helper_fill_info(info, fb_helper, sizes);
 
 	info->fbops = &drm_fbdev_generic_fb_ops;
-	info->flags = FBINFO_DEFAULT;
 
 	/* screen */
 	info->flags |= FBINFO_VIRTFB | FBINFO_READS_FAST;
@@ -126,19 +124,6 @@ static int drm_fbdev_generic_helper_fb_probe(struct drm_fb_helper *fb_helper,
 	ret = fb_deferred_io_init(info);
 	if (ret)
 		goto err_drm_fb_helper_release_info;
-
-	ret = of_property_read_u32_index(of_chosen, "p-boot,framebuffer-start", 0, &fb_start);
-	if (ret == 0) {
-		// copy framebuffer contents from p-boot if reasonable
-		if (screen_size != 720 * 1440 * 4) {
-			drm_err(dev, "surface width(%d), height(%d) and bpp(%d) does not match p-boot requirements\n",
-				    sizes->surface_width, sizes->surface_height,
-				    sizes->surface_bpp);
-			return 0;
-		}
-
-		memcpy(screen_buffer, __va(fb_start), screen_size);
-	}
 
 	return 0;
 

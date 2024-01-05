@@ -9,13 +9,12 @@
 #include <linux/clkdev.h>
 #include <linux/ctype.h>
 #include <linux/delay.h>
-#include <linux/firmware.h>
 #include <linux/device.h>
 #include <linux/gpio/consumer.h>
 #include <linux/i2c.h>
 #include <linux/init.h>
+#include <linux/mod_devicetable.h>
 #include <linux/module.h>
-#include <linux/of_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/regulator/consumer.h>
 #include <linux/slab.h>
@@ -119,38 +118,6 @@
 #define OV5640_REG_SDE_CTRL4		0x5584
 #define OV5640_REG_SDE_CTRL5		0x5585
 #define OV5640_REG_AVG_READOUT		0x56a1
-
-/* autofocus registers */
-
-#define OV5640_REG_SYS_RESET00		0x3000
-#define OV5640_REG_SYS_RESET01		0x3001
-#define OV5640_REG_SYS_CLOCK_ENABLE00	0x3004
-#define OV5640_REG_SYS_CLOCK_ENABLE01	0x3005
-
-#define OV5640_REG_FW_CMD_MAIN		0x3022
-#define OV5640_REG_FW_CMD_ACK		0x3023
-#define OV5640_REG_FW_CMD_PARA0		0x3024
-#define OV5640_REG_FW_CMD_PARA1		0x3025
-#define OV5640_REG_FW_CMD_PARA2		0x3026
-#define OV5640_REG_FW_CMD_PARA3		0x3027
-#define OV5640_REG_FW_CMD_PARA4		0x3028
-#define OV5640_REG_FW_STATUS		0x3029
-
-#define OV5640_REG_VCM_CONTROL4		0x3606
-#define OV5640_REG_FIRMWARE_BASE	0x8000
-
-#define OV5640_FW_STATUS_S_FIRMWARE	0x7f
-#define OV5640_FW_STATUS_S_STARTUP	0x7e
-#define OV5640_FW_STATUS_S_IDLE		0x70
-#define OV5640_FW_STATUS_S_FOCUSING	0x00
-#define OV5640_FW_STATUS_S_FOCUSED	0x10
-
-#define OV5640_FW_CMD_TRIGGER_FOCUS	0x03
-#define OV5640_FW_CMD_CONTINUOUS_FOCUS	0x04
-#define OV5640_FW_CMD_GET_FOCUS_RESULT	0x07
-#define OV5640_FW_CMD_RELEASE_FOCUS	0x08
-#define OV5640_FW_CMD_ZONE_CONFIG	0x12
-#define OV5640_FW_CMD_DEFAULT_ZONES	0x80
 
 enum ov5640_mode_id {
 	OV5640_MODE_QQVGA_160_120 = 0,
@@ -456,12 +423,6 @@ struct ov5640_ctrls {
 		struct v4l2_ctrl *auto_gain;
 		struct v4l2_ctrl *gain;
 	};
-	struct {
-		struct v4l2_ctrl *focus_auto;
-		struct v4l2_ctrl *af_start;
-		struct v4l2_ctrl *af_stop;
-		struct v4l2_ctrl *af_status;
-	};
 	struct v4l2_ctrl *brightness;
 	struct v4l2_ctrl *light_freq;
 	struct v4l2_ctrl *saturation;
@@ -504,8 +465,6 @@ struct ov5640_dev {
 
 	bool pending_mode_change;
 	bool streaming;
-
-	bool af_initialized;
 };
 
 static inline struct ov5640_dev *to_ov5640_dev(struct v4l2_subdev *sd)
@@ -609,9 +568,7 @@ static const struct reg_value ov5640_init_setting[] = {
 	{0x4001, 0x02, 0, 0}, {0x4004, 0x02, 0, 0}, {0x3000, 0x00, 0, 0},
 	{0x3002, 0x1c, 0, 0}, {0x3004, 0xff, 0, 0}, {0x3006, 0xc3, 0, 0},
 	{0x302e, 0x08, 0, 0}, {0x4300, 0x3f, 0, 0},
-	{0x501f, 0x00, 0, 0}, {0x4407, 0x04, 0, 0},
-	{0x440e, 0x00, 0, 0}, {0x460b, 0x35, 0, 0}, {0x460c, 0x22, 0, 0},
-	{0x4837, 0x0a, 0, 0}, {0x3824, 0x02, 0, 0},
+	{0x501f, 0x00, 0, 0}, {0x440e, 0x00, 0, 0}, {0x4837, 0x0a, 0, 0},
 	{0x5000, 0xa7, 0, 0}, {0x5001, 0xa3, 0, 0}, {0x5180, 0xff, 0, 0},
 	{0x5181, 0xf2, 0, 0}, {0x5182, 0x00, 0, 0}, {0x5183, 0x14, 0, 0},
 	{0x5184, 0x25, 0, 0}, {0x5185, 0x24, 0, 0}, {0x5186, 0x09, 0, 0},
@@ -675,7 +632,8 @@ static const struct reg_value ov5640_setting_low_res[] = {
 	{0x3a0a, 0x00, 0, 0}, {0x3a0b, 0xf6, 0, 0}, {0x3a0e, 0x03, 0, 0},
 	{0x3a0d, 0x04, 0, 0}, {0x3a14, 0x03, 0, 0}, {0x3a15, 0xd8, 0, 0},
 	{0x4001, 0x02, 0, 0}, {0x4004, 0x02, 0, 0},
-	{0x4407, 0x04, 0, 0}, {0x5001, 0xa3, 0, 0},
+	{0x4407, 0x04, 0, 0}, {0x460b, 0x35, 0, 0}, {0x460c, 0x22, 0, 0},
+	{0x3824, 0x02, 0, 0}, {0x5001, 0xa3, 0, 0},
 };
 
 static const struct reg_value ov5640_setting_720P_1280_720[] = {
@@ -1233,48 +1191,10 @@ static int ov5640_write_reg(struct ov5640_dev *sensor, u16 reg, u8 val)
 	msg.buf = buf;
 	msg.len = sizeof(buf);
 
-	dev_dbg(&client->dev, "[wr %04x] <= %d\n", reg, val);
-
 	ret = i2c_transfer(client->adapter, &msg, 1);
 	if (ret < 0) {
 		dev_err(&client->dev, "%s: error: reg=%x, val=%x\n",
 			__func__, reg, val);
-		return ret;
-	}
-
-	return 0;
-}
-
-static int ov5640_write_regs(struct ov5640_dev *sensor, u16 reg,
-			     const u8 *data, int data_size)
-{
-	struct i2c_client *client = sensor->i2c_client;
-	struct i2c_msg msg;
-	u8 buf[254 + 2];
-	int ret;
-
-	if (data_size > sizeof(buf) - 2) {
-		v4l2_err(&sensor->sd, "%s: oversized transfer (size=%d)\n",
-			 __func__, data_size);
-		return -EINVAL;
-	}
-
-	buf[0] = reg >> 8;
-	buf[1] = reg & 0xff;
-	memcpy(buf + 2, data, data_size);
-
-	msg.addr = client->addr;
-	msg.flags = client->flags;
-	msg.buf = buf;
-	msg.len = data_size + 2;
-
-	dev_dbg(&client->dev, "[wr %04x] <= %*ph\n", (u32)reg, data_size, data);
-
-	ret = i2c_transfer(client->adapter, &msg, 1);
-	if (ret < 0) {
-		v4l2_err(&sensor->sd,
-			 "%s: error %d: reg=%x, data=%*ph\n",
-			 __func__, ret, (u32)reg, data_size, data);
 		return ret;
 	}
 
@@ -2406,7 +2326,6 @@ static int ov5640_set_mode(struct ov5640_dev *sensor)
 	bool auto_gain = sensor->ctrls.auto_gain->val == 1;
 	bool auto_exp =  sensor->ctrls.auto_exp->val == V4L2_EXPOSURE_AUTO;
 	int ret;
-	u8 tmp;
 
 	dn_mode = mode->dn_mode;
 	orig_dn_mode = orig_mode->dn_mode;
@@ -2468,22 +2387,6 @@ static int ov5640_set_mode(struct ov5640_dev *sensor)
 		return ret;
 	ret = ov5640_set_virtual_channel(sensor);
 	if (ret < 0)
-		return ret;
-
-	ret = ov5640_read_reg(sensor, 0x5308, &tmp);
-	if (ret)
-		return ret;
-
-	ret = ov5640_write_reg(sensor, 0x5308, tmp | 0x10 | 0x40);
-	if (ret)
-		return ret;
-
-	ret = ov5640_write_reg(sensor, 0x5306, 0);
-	if (ret)
-		return ret;
-
-	ret = ov5640_write_reg(sensor, 0x5302, 0);
-	if (ret)
 		return ret;
 
 	sensor->pending_mode_change = false;
@@ -2549,16 +2452,13 @@ static void ov5640_power(struct ov5640_dev *sensor, bool enable)
 static void ov5640_powerup_sequence(struct ov5640_dev *sensor)
 {
 	if (sensor->pwdn_gpio) {
-		gpiod_set_value_cansleep(sensor->reset_gpio, 0);
+		gpiod_set_value_cansleep(sensor->reset_gpio, 1);
 
 		/* camera power cycle */
 		ov5640_power(sensor, false);
-		usleep_range(5000, 10000);
+		usleep_range(5000, 10000);	/* t2 */
 		ov5640_power(sensor, true);
-		usleep_range(5000, 10000);
-
-		gpiod_set_value_cansleep(sensor->reset_gpio, 1);
-		usleep_range(1000, 2000);
+		usleep_range(1000, 2000);	/* t3 */
 
 		gpiod_set_value_cansleep(sensor->reset_gpio, 0);
 	} else {
@@ -2566,7 +2466,7 @@ static void ov5640_powerup_sequence(struct ov5640_dev *sensor)
 		ov5640_write_reg(sensor, OV5640_REG_SYS_CTRL0,
 				 OV5640_REG_SYS_CTRL0_SW_RST);
 	}
-	usleep_range(20000, 25000);
+	usleep_range(20000, 25000);	/* t4 */
 
 	/*
 	 * software standby: allows registers programming;
@@ -2576,140 +2476,9 @@ static void ov5640_powerup_sequence(struct ov5640_dev *sensor)
 			 OV5640_REG_SYS_CTRL0_SW_PWDN);
 }
 
-static int ov5640_copy_fw_to_device(struct ov5640_dev *sensor,
-					const struct firmware *fw)
-{
-	struct i2c_client *client = sensor->i2c_client;
-	const u8 *data = (const u8 *)fw->data;
-	u8 fw_status;
-	int i;
-	int ret;
-	int num_groups, group_size = 254;
-
-	// Putting MCU in reset state
-	ret = ov5640_write_reg(sensor, OV5640_REG_SYS_RESET00, 0x20);
-	if (ret)
-		return ret;
-
-	// Write firmware
-	num_groups = fw->size / group_size;
-	for (i = 0; i < num_groups; i++) {
-		ret = ov5640_write_regs(sensor,
-					OV5640_REG_FIRMWARE_BASE + i * group_size,
-					data + i * group_size,
-					group_size);
-		if (ret)
-			return ret;
-	}
-
-	if (i * group_size < fw->size) {
-		ret = ov5640_write_regs(sensor,
-					OV5640_REG_FIRMWARE_BASE + i * group_size,
-					data + i * group_size,
-					fw->size - i * group_size);
-		if (ret)
-			return ret;
-	}
-
-	// Reset MCU state
-	ov5640_write_reg(sensor, OV5640_REG_FW_CMD_MAIN, 0x00);
-	ov5640_write_reg(sensor, OV5640_REG_FW_CMD_ACK, 0x00);
-	ov5640_write_reg(sensor, OV5640_REG_FW_CMD_PARA0, 0x00);
-	ov5640_write_reg(sensor, OV5640_REG_FW_CMD_PARA1, 0x00);
-	ov5640_write_reg(sensor, OV5640_REG_FW_CMD_PARA2, 0x00);
-	ov5640_write_reg(sensor, OV5640_REG_FW_CMD_PARA3, 0x00);
-	ov5640_write_reg(sensor, OV5640_REG_FW_CMD_PARA4, 0x00);
-	ov5640_write_reg(sensor, OV5640_REG_FW_STATUS, 0x7f);
-
-	// Start AF MCU
-	ret = ov5640_write_reg(sensor, OV5640_REG_SYS_RESET00, 0x00);
-	if (ret)
-		return ret;
-
-	dev_info(&client->dev, "firmware upload success\n");
-
-	// Wait for firmware to be ready
-	for (i = 0; i < 5; i++) {
-		ret = ov5640_read_reg(sensor, OV5640_REG_FW_STATUS, &fw_status);
-		if (ret) {
-			return ret;
-		}
-
-		if (fw_status == OV5640_FW_STATUS_S_IDLE) {
-			dev_info(&client->dev, "fw started after %d ms\n", i * 5);
-			return 0;
-		}
-		msleep(5);
-	}
-
-	dev_err(&client->dev, "uploaded firmware didn't start, got to 0x%x\n", fw_status);
-	return -ETIMEDOUT;
-}
-
-static int ov5640_fw_command(struct ov5640_dev *sensor, int command)
-{
-	int ret;
-
-	ret = ov5640_write_reg(sensor, OV5640_REG_FW_CMD_MAIN, command);
-	if(ret)
-		return ret;
-
-	msleep(5);
-
-	return 0;
-}
-
-static int ov5640_af_init(struct ov5640_dev *sensor)
-{
-	struct i2c_client *client = sensor->i2c_client;
-	const char* fwname = "ov5640_af.bin";
-	const struct firmware *fw;
-	int ret;
-
-	if (sensor->af_initialized) {
-		return 0;
-	}
-
-	if (firmware_request_nowarn(&fw, fwname, &client->dev) == 0) {
-		ret = ov5640_copy_fw_to_device(sensor, fw);
-		if (ret == 0)
-			sensor->af_initialized = 1;
-	} else {
-		dev_warn(&client->dev, "%s: no autofocus firmware available (%s)\n",
-			__func__, fwname);
-		ret = -1;
-	}
-	release_firmware(fw);
-
-	if (ret)
-		return ret;
-
-	// Enable AF systems
-	ret = ov5640_mod_reg(sensor, OV5640_REG_SYS_CLOCK_ENABLE00,
-			     (BIT(6) | BIT(5)), (BIT(6) | BIT(5)));
-	if (ret)
-		return ret;
-	ret = ov5640_mod_reg(sensor, OV5640_REG_SYS_CLOCK_ENABLE01,
-			     BIT(6), BIT(6));
-	if (ret)
-		return ret;
-
-	// Set lens focus driver on
-	ret = ov5640_write_reg(sensor, OV5640_REG_VCM_CONTROL4, 0x3f);
-	if (ret)
-		return ret;
-
-	// Set the default focus zone
-	ret = ov5640_fw_command(sensor, OV5640_FW_CMD_ZONE_CONFIG);
-	if (ret)
-		return ret;
-	return ret;
-}
-
 static int ov5640_set_power_on(struct ov5640_dev *sensor)
 {
 	struct i2c_client *client = sensor->i2c_client;
-	u16 chip_id;
 	int ret;
 
 	ret = clk_prepare_enable(sensor->xclk);
@@ -2727,21 +2496,11 @@ static int ov5640_set_power_on(struct ov5640_dev *sensor)
 		goto xclk_off;
 	}
 
-	sensor->af_initialized = 0;
-
 	ov5640_powerup_sequence(sensor);
-
 
 	ret = ov5640_init_slave_id(sensor);
 	if (ret)
 		goto power_off;
-
-	ret = ov5640_read_reg16(sensor, OV5640_REG_CHIP_ID, &chip_id);
-	if (ret) {
-		dev_err(&client->dev, "%s: failed to read chip identifier\n",
-			__func__);
-		goto power_off;
-	}
 
 	return 0;
 
@@ -2758,7 +2517,6 @@ static void ov5640_set_power_off(struct ov5640_dev *sensor)
 	ov5640_power(sensor, false);
 	regulator_bulk_disable(OV5640_NUM_SUPPLIES, sensor->supplies);
 	clk_disable_unprepare(sensor->xclk);
-	msleep(100);
 }
 
 static int ov5640_set_power_mipi(struct ov5640_dev *sensor, bool on)
@@ -2781,9 +2539,9 @@ static int ov5640_set_power_mipi(struct ov5640_dev *sensor, bool on)
 	 *		  "ov5640_set_stream_mipi()")
 	 * [4] = 0	: Power up MIPI HS Tx
 	 * [3] = 0	: Power up MIPI LS Rx
-	 * [2] = 0	: MIPI interface disabled
+	 * [2] = 1	: MIPI interface enabled
 	 */
-	ret = ov5640_write_reg(sensor, OV5640_REG_IO_MIPI_CTRL00, 0x40);
+	ret = ov5640_write_reg(sensor, OV5640_REG_IO_MIPI_CTRL00, 0x44);
 	if (ret)
 		return ret;
 
@@ -3092,12 +2850,22 @@ static int ov5640_try_fmt_internal(struct v4l2_subdev *sd,
 	return 0;
 }
 
+static void __v4l2_ctrl_vblank_update(struct ov5640_dev *sensor, u32 vblank)
+{
+	const struct ov5640_mode_info *mode = sensor->current_mode;
+
+	__v4l2_ctrl_modify_range(sensor->ctrls.vblank, OV5640_MIN_VBLANK,
+				 OV5640_MAX_VTS - mode->height, 1, vblank);
+
+	__v4l2_ctrl_s_ctrl(sensor->ctrls.vblank, vblank);
+}
+
 static int ov5640_update_pixel_rate(struct ov5640_dev *sensor)
 {
 	const struct ov5640_mode_info *mode = sensor->current_mode;
 	enum ov5640_pixel_rate_id pixel_rate_id = mode->pixel_rate;
 	struct v4l2_mbus_framefmt *fmt = &sensor->fmt;
-	const struct ov5640_timings *timings;
+	const struct ov5640_timings *timings = ov5640_timings(sensor, mode);
 	s32 exposure_val, exposure_max;
 	unsigned int hblank;
 	unsigned int i = 0;
@@ -3115,6 +2883,8 @@ static int ov5640_update_pixel_rate(struct ov5640_dev *sensor)
 	if (!ov5640_is_csi2(sensor)) {
 		__v4l2_ctrl_s_ctrl_int64(sensor->ctrls.pixel_rate,
 					 ov5640_calc_pixel_rate(sensor));
+
+		__v4l2_ctrl_vblank_update(sensor, timings->vblank_def);
 
 		return 0;
 	}
@@ -3158,15 +2928,12 @@ static int ov5640_update_pixel_rate(struct ov5640_dev *sensor)
 	__v4l2_ctrl_s_ctrl_int64(sensor->ctrls.pixel_rate, pixel_rate);
 	__v4l2_ctrl_s_ctrl(sensor->ctrls.link_freq, i);
 
-	timings = ov5640_timings(sensor, mode);
 	hblank = timings->htot - mode->width;
 	__v4l2_ctrl_modify_range(sensor->ctrls.hblank,
 				 hblank, hblank, 1, hblank);
 
 	vblank = timings->vblank_def;
-	__v4l2_ctrl_modify_range(sensor->ctrls.vblank, OV5640_MIN_VBLANK,
-				 OV5640_MAX_VTS - mode->height, 1, vblank);
-	__v4l2_ctrl_s_ctrl(sensor->ctrls.vblank, vblank);
+	__v4l2_ctrl_vblank_update(sensor, vblank);
 
 	exposure_max = timings->crop.height + vblank - 4;
 	exposure_val = clamp_t(s32, sensor->ctrls.exposure->val,
@@ -3433,28 +3200,6 @@ static int ov5640_set_ctrl_exposure(struct ov5640_dev *sensor,
 	return ret;
 }
 
-static int ov5640_set_ctrl_focus(struct ov5640_dev *sensor, int command)
-{
-	struct i2c_client *client = sensor->i2c_client;
-	int ret;
-
-	// Don't attempt to do focus if the embedded controller is powered down
-	if (!sensor->streaming) {
-		dev_err(&client->dev, "%s: can't set focus when not powered\n",
-			__func__);
-		return 0;
-	}
-
-	ret = ov5640_af_init(sensor);
-	if (ret) {
-		dev_err(&client->dev, "%s: autofocus firmware load failed\n",
-			__func__);
-		return 0;
-	}
-
-	return ov5640_fw_command(sensor, command);
-}
-
 static int ov5640_set_ctrl_gain(struct ov5640_dev *sensor, bool auto_gain)
 {
 	struct ov5640_ctrls *ctrls = &sensor->ctrls;
@@ -3570,32 +3315,6 @@ static int ov5640_set_ctrl_vblank(struct ov5640_dev *sensor, int value)
 				  mode->height + value);
 }
 
-static int ov5640_get_af_status(struct ov5640_dev *sensor)
-{
-	u8 fw_status;
-	int ret;
-
-	ret = ov5640_read_reg(sensor, OV5640_REG_FW_STATUS, &fw_status);
-	if (ret)
-		return ret;
-
-	switch (fw_status) {
-		case OV5640_FW_STATUS_S_FIRMWARE:
-		case OV5640_FW_STATUS_S_STARTUP:
-			return V4L2_AUTO_FOCUS_STATUS_FAILED;
-			break;
-		case OV5640_FW_STATUS_S_IDLE:
-			return V4L2_AUTO_FOCUS_STATUS_IDLE;
-			break;
-		case OV5640_FW_STATUS_S_FOCUSED:
-			return V4L2_AUTO_FOCUS_STATUS_REACHED;
-			break;
-		default:
-			return V4L2_AUTO_FOCUS_STATUS_BUSY;
-			break;
-	}
-}
-
 static int ov5640_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
 {
 	struct v4l2_subdev *sd = ctrl_to_sd(ctrl);
@@ -3619,12 +3338,6 @@ static int ov5640_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
 		if (val < 0)
 			return val;
 		sensor->ctrls.exposure->val = val;
-		break;
-	case V4L2_CID_FOCUS_AUTO:
-		val = ov5640_get_af_status(sensor);
-		if (val < 0)
-			return val;
-		sensor->ctrls.af_status->val = val;
 		break;
 	}
 
@@ -3674,18 +3387,6 @@ static int ov5640_s_ctrl(struct v4l2_ctrl *ctrl)
 		break;
 	case V4L2_CID_AUTO_WHITE_BALANCE:
 		ret = ov5640_set_ctrl_white_balance(sensor, ctrl->val);
-		break;
-	case V4L2_CID_FOCUS_AUTO:
-		if (ctrl->val)
-			ret = ov5640_set_ctrl_focus(sensor, OV5640_FW_CMD_CONTINUOUS_FOCUS);
-		else
-			ret = ov5640_set_ctrl_focus(sensor, OV5640_FW_CMD_RELEASE_FOCUS);
-		break;
-	case V4L2_CID_AUTO_FOCUS_START:
-		ret = ov5640_set_ctrl_focus(sensor, OV5640_FW_CMD_TRIGGER_FOCUS);
-		break;
-	case V4L2_CID_AUTO_FOCUS_STOP:
-		ret = ov5640_set_ctrl_focus(sensor, OV5640_FW_CMD_RELEASE_FOCUS);
 		break;
 	case V4L2_CID_HUE:
 		ret = ov5640_set_ctrl_hue(sensor, ctrl->val);
@@ -3787,20 +3488,6 @@ static int ov5640_init_controls(struct ov5640_dev *sensor)
 	ctrls->gain = v4l2_ctrl_new_std(hdl, ops, V4L2_CID_ANALOGUE_GAIN,
 					0, 1023, 1, 0);
 
-	/* Autofocus */
-	ctrls->focus_auto = v4l2_ctrl_new_std(hdl, ops, V4L2_CID_FOCUS_AUTO,
-					    0, 1, 1, 0);
-	ctrls->af_start = v4l2_ctrl_new_std(hdl, ops, V4L2_CID_AUTO_FOCUS_START,
-					    0, 1, 1, 0);
-	ctrls->af_stop = v4l2_ctrl_new_std(hdl, ops, V4L2_CID_AUTO_FOCUS_STOP,
-					   0, 1, 1, 0);
-	ctrls->af_status = v4l2_ctrl_new_std(hdl, ops,
-					     V4L2_CID_AUTO_FOCUS_STATUS, 0,
-					     (V4L2_AUTO_FOCUS_STATUS_BUSY |
-					      V4L2_AUTO_FOCUS_STATUS_REACHED |
-					      V4L2_AUTO_FOCUS_STATUS_FAILED),
-					     0, V4L2_AUTO_FOCUS_STATUS_IDLE);
-
 	ctrls->saturation = v4l2_ctrl_new_std(hdl, ops, V4L2_CID_SATURATION,
 					      0, 255, 1, 64);
 	ctrls->hue = v4l2_ctrl_new_std(hdl, ops, V4L2_CID_HUE,
@@ -3841,14 +3528,12 @@ static int ov5640_init_controls(struct ov5640_dev *sensor)
 	ctrls->pixel_rate->flags |= V4L2_CTRL_FLAG_READ_ONLY;
 	ctrls->link_freq->flags |= V4L2_CTRL_FLAG_READ_ONLY;
 	ctrls->hblank->flags |= V4L2_CTRL_FLAG_READ_ONLY;
-	ctrls->vblank->flags |= V4L2_CTRL_FLAG_READ_ONLY;
 	ctrls->gain->flags |= V4L2_CTRL_FLAG_VOLATILE;
 	ctrls->exposure->flags |= V4L2_CTRL_FLAG_VOLATILE;
 
 	v4l2_ctrl_auto_cluster(3, &ctrls->auto_wb, 0, false);
 	v4l2_ctrl_auto_cluster(2, &ctrls->auto_gain, 0, true);
 	v4l2_ctrl_auto_cluster(2, &ctrls->auto_exp, 1, true);
-	v4l2_ctrl_cluster(4, &ctrls->focus_auto);
 
 	sensor->sd.ctrl_handler = hdl;
 	return 0;
@@ -4119,6 +3804,28 @@ static int ov5640_get_regulators(struct ov5640_dev *sensor)
 				       sensor->supplies);
 }
 
+static int ov5640_check_chip_id(struct ov5640_dev *sensor)
+{
+	struct i2c_client *client = sensor->i2c_client;
+	int ret = 0;
+	u16 chip_id;
+
+	ret = ov5640_read_reg16(sensor, OV5640_REG_CHIP_ID, &chip_id);
+	if (ret) {
+		dev_err(&client->dev, "%s: failed to read chip identifier\n",
+			__func__);
+		return ret;
+	}
+
+	if (chip_id != 0x5640) {
+		dev_err(&client->dev, "%s: wrong chip identifier, expected 0x5640, got 0x%x\n",
+			__func__, chip_id);
+		return -ENXIO;
+	}
+
+	return 0;
+}
+
 static int ov5640_probe(struct i2c_client *client)
 {
 	struct device *dev = &client->dev;
@@ -4145,7 +3852,7 @@ static int ov5640_probe(struct i2c_client *client)
 	sensor->current_link_freq =
 		ov5640_csi2_link_freqs[OV5640_DEFAULT_LINK_FREQ];
 
-	sensor->ae_target = 28;
+	sensor->ae_target = 52;
 
 	endpoint = fwnode_graph_get_next_endpoint(dev_fwnode(&client->dev),
 						  NULL);
@@ -4209,10 +3916,8 @@ static int ov5640_probe(struct i2c_client *client)
 		return ret;
 
 	ret = ov5640_get_regulators(sensor);
-	if (ret) {
-		dev_err_probe(dev, ret, "Failed to get regulators\n");
+	if (ret)
 		goto entity_cleanup;
-	}
 
 	mutex_init(&sensor->lock);
 
@@ -4220,19 +3925,36 @@ static int ov5640_probe(struct i2c_client *client)
 	if (ret)
 		goto entity_cleanup;
 
-	ret = v4l2_async_register_subdev_sensor(&sensor->sd);
+	ret = ov5640_sensor_resume(dev);
 	if (ret) {
-		dev_err_probe(dev, ret, "Failed to register sensor\n");
-		goto err_controls;
+		dev_err(dev, "failed to power on\n");
+		goto free_ctrls;
 	}
 
+	pm_runtime_set_active(dev);
+	pm_runtime_get_noresume(dev);
 	pm_runtime_enable(dev);
+
+	ret = ov5640_check_chip_id(sensor);
+	if (ret)
+		goto err_pm_runtime;
+
+	ret = v4l2_async_register_subdev_sensor(&sensor->sd);
+	if (ret)
+		goto err_pm_runtime;
+
 	pm_runtime_set_autosuspend_delay(dev, 1000);
 	pm_runtime_use_autosuspend(dev);
+	pm_runtime_mark_last_busy(dev);
+	pm_runtime_put_autosuspend(dev);
 
 	return 0;
 
-err_controls:
+err_pm_runtime:
+	pm_runtime_put_noidle(dev);
+	pm_runtime_disable(dev);
+	ov5640_sensor_suspend(dev);
+free_ctrls:
 	v4l2_ctrl_handler_free(&sensor->ctrls.handler);
 entity_cleanup:
 	media_entity_cleanup(&sensor->sd.entity);
@@ -4246,8 +3968,6 @@ static void ov5640_remove(struct i2c_client *client)
 	struct ov5640_dev *sensor = to_ov5640_dev(sd);
 	struct device *dev = &client->dev;
 
-	pm_runtime_dont_use_autosuspend(dev);
-
 	pm_runtime_disable(dev);
 	if (!pm_runtime_status_suspended(dev))
 		ov5640_sensor_suspend(dev);
@@ -4260,8 +3980,6 @@ static void ov5640_remove(struct i2c_client *client)
 }
 
 static const struct dev_pm_ops ov5640_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend,
-				pm_runtime_force_resume)
 	SET_RUNTIME_PM_OPS(ov5640_sensor_suspend, ov5640_sensor_resume, NULL)
 };
 

@@ -414,28 +414,15 @@ void dwc3_otg_update(struct dwc3 *dwc, bool ignore_idstatus)
 
 static void dwc3_drd_update(struct dwc3 *dwc)
 {
-	u32 mode = DWC3_GCTL_PRTCAP_DEVICE_DISCONNECTED;
-	int ret;
+	int id;
 
 	if (dwc->edev) {
-		ret = extcon_get_state(dwc->edev, EXTCON_USB_HOST);
-		if (ret > 0)
-			mode = DWC3_GCTL_PRTCAP_HOST;
-
-		if (dwc->usb3_phy_reset_quirk) {
-			/*
-			 * With this quirk enabled, we want to pass 0
-			 * to dwc3_set_mode to signal no USB connection
-			 * state.
-			 */
-			ret = extcon_get_state(dwc->edev, EXTCON_USB);
-			if (ret > 0)
-				mode = DWC3_GCTL_PRTCAP_DEVICE;
-		} else {
-			mode = DWC3_GCTL_PRTCAP_DEVICE;
-		}
-
-		dwc3_set_mode(dwc, mode);
+		id = extcon_get_state(dwc->edev, EXTCON_USB_HOST);
+		if (id < 0)
+			id = 0;
+		dwc3_set_mode(dwc, id ?
+			      DWC3_GCTL_PRTCAP_HOST :
+			      DWC3_GCTL_PRTCAP_DEVICE);
 	}
 }
 
@@ -444,7 +431,9 @@ static int dwc3_drd_notifier(struct notifier_block *nb,
 {
 	struct dwc3 *dwc = container_of(nb, struct dwc3, edev_nb);
 
-	dwc3_drd_update(dwc);
+	dwc3_set_mode(dwc, event ?
+		      DWC3_GCTL_PRTCAP_HOST :
+		      DWC3_GCTL_PRTCAP_DEVICE);
 
 	return NOTIFY_DONE;
 }
@@ -516,6 +505,7 @@ static int dwc3_setup_role_switch(struct dwc3 *dwc)
 		dwc->role_switch_default_mode = USB_DR_MODE_PERIPHERAL;
 		mode = DWC3_GCTL_PRTCAP_DEVICE;
 	}
+	dwc3_set_mode(dwc, mode);
 
 	dwc3_role_switch.fwnode = dev_fwnode(dwc->dev);
 	dwc3_role_switch.set = dwc3_usb_role_switch_set;
@@ -537,7 +527,6 @@ static int dwc3_setup_role_switch(struct dwc3 *dwc)
 		}
 	}
 
-	dwc3_set_mode(dwc, mode);
 	return 0;
 }
 #else
@@ -555,7 +544,8 @@ int dwc3_drd_init(struct dwc3 *dwc)
 
 	if (dwc->edev) {
 		dwc->edev_nb.notifier_call = dwc3_drd_notifier;
-		ret = extcon_register_notifier_all(dwc->edev, &dwc->edev_nb);
+		ret = extcon_register_notifier(dwc->edev, EXTCON_USB_HOST,
+					       &dwc->edev_nb);
 		if (ret < 0) {
 			dev_err(dwc->dev, "couldn't register cable notifier\n");
 			return ret;
