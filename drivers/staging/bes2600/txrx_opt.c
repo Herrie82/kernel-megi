@@ -255,7 +255,7 @@ void bes2600_set_cca_method(struct bes2600_common *hw_priv, struct bes2600_vif *
 
 void bes2600_set_dynamic_agc(struct bes2600_common *hw_priv, struct bes2600_vif *priv, int value)
 {
-// todo set agc alg 
+// todo set agc alg
 }
 
 int bes2600_update_pwr_table(struct bes2600_common *hw_priv,
@@ -341,7 +341,7 @@ void bes2600_dynamic_opt_rxtx(struct bes2600_common *hw_priv, struct bes2600_vif
 
 	/* set rts/cts protection dynamically */
 	if (tx_cnt > 50 && succPro != 0) {
-		if (succPro > TXRX_RTS_PROT_TRIG_THRESH && 
+		if (succPro > TXRX_RTS_PROT_TRIG_THRESH &&
 			TXRX_RTS_PROT_OPENED(cur_rts_thres) &&
 		    time_after(jiffies, last_rts_set_time + TXRX_RTS_PROT_DURATION * HZ)) {
 			TXRX_RTS_PROT_CLOSE(cur_rts_thres);
@@ -485,11 +485,19 @@ int bes2600_set_txrx_opt_default_param(struct bes2600_common * hw_priv)
 
 	if (priv->join_status == BES2600_JOIN_STATUS_STA) {
 		sta = ieee80211_find_sta(priv->vif, priv->vif->bss_conf.bssid);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
 		if (sta->deflink.ht_cap.ht_supported &&
-		    ((priv->vif->bss_conf.chandef.width == NL80211_CHAN_WIDTH_20 && 
+		    ((priv->vif->bss_conf.chandef.width == NL80211_CHAN_WIDTH_20 &&
 			 sta->deflink.ht_cap.cap & IEEE80211_HT_CAP_SGI_20) ||
-			(priv->vif->bss_conf.chandef.width == NL80211_CHAN_WIDTH_40 && 
+			(priv->vif->bss_conf.chandef.width == NL80211_CHAN_WIDTH_40 &&
 			 sta->deflink.ht_cap.cap & IEEE80211_HT_CAP_SGI_40))) {
+#else
+		if (sta->ht_cap.ht_supported &&
+		    ((priv->vif->bss_conf.chandef.width == NL80211_CHAN_WIDTH_20 &&
+			 sta->ht_cap.cap & IEEE80211_HT_CAP_SGI_20) ||
+			(priv->vif->bss_conf.chandef.width == NL80211_CHAN_WIDTH_40 &&
+			 sta->ht_cap.cap & IEEE80211_HT_CAP_SGI_40))) {
+#endif
 			bes2600_info(BES2600_DBG_TXRX, "open short gi tx\n");
 			bes2600_enable_tx_shortgi(hw_priv, priv, 1);
 		} else {

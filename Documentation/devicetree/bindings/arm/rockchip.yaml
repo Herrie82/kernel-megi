@@ -196,6 +196,11 @@ properties:
           - const: firefly,rk3566-roc-pc
           - const: rockchip,rk3566
 
+      - description: Firefly Station P2
+        items:
+          - const: firefly,rk3568-roc-pc
+          - const: rockchip,rk3568
+
       - description: FriendlyElec NanoPi R2 series boards
         items:
           - enum:
@@ -221,6 +226,11 @@ properties:
               - friendlyarm,nanopi-r5c
               - friendlyarm,nanopi-r5s
           - const: rockchip,rk3568
+
+      - description: FriendlyElec NanoPC T6
+        items:
+          - const: friendlyarm,nanopc-t6
+          - const: rockchip,rk3588
 
       - description: GeekBuying GeekBox
         items:
@@ -694,6 +704,11 @@ properties:
           - const: radxa,rock-4c-plus
           - const: rockchip,rk3399
 
+      - description: Radxa ROCK 4SE
+        items:
+          - const: radxa,rock-4se
+          - const: rockchip,rk3399
+
       - description: Radxa ROCK Pi E
         items:
           - const: radxa,rockpi-e
@@ -854,11 +869,6 @@ properties:
         items:
           - const: tronsmart,orion-r68-meta
           - const: rockchip,rk3368
-
-      - description: Xunlong Orange Pi 5 Plus
-        items:
-          - const: xunlong,orangepi-5-plus
-          - const: rockchip,rk3588
 
       - description: Xunlong Orange Pi R1 Plus / LTS
         items:

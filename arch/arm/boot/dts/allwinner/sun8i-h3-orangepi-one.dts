@@ -54,9 +54,6 @@
 	aliases {
 		ethernet0 = &emac;
 		serial0 = &uart0;
-		serial1 = &uart1;
-		serial2 = &uart2;
-		serial3 = &uart3;
 	};
 
 	chosen {
@@ -94,7 +91,7 @@
 
 		switch-4 {
 			label = "sw4";
-			linux,code = <KEY_POWER>;
+			linux,code = <BTN_0>;
 			gpios = <&r_pio 0 3 GPIO_ACTIVE_LOW>;
 		};
 	};
@@ -149,10 +146,6 @@
 	};
 };
 
-&i2s2 {
-	status = "okay";
-};
-
 &mmc0 {
 	vmmc-supply = <&reg_vcc3v3>;
 	bus-width = <4>;
@@ -173,10 +166,6 @@
 	status = "okay";
 };
 
-&sound_hdmi {
-	status = "okay";
-};
-
 &uart0 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&uart0_pa_pins>;
@@ -186,19 +175,19 @@
 &uart1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&uart1_pins>;
-	status = "okay";
+	status = "disabled";
 };
 
 &uart2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&uart2_pins>;
-	status = "okay";
+	status = "disabled";
 };
 
 &uart3 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&uart3_pins>;
-	status = "okay";
+	status = "disabled";
 };
 
 &usb_otg {

@@ -732,7 +732,6 @@ static void sun6i_dsi_encoder_enable(struct drm_encoder *encoder)
 	reset_control_deassert(dsi->reset);
 	clk_prepare_enable(dsi->mod_clk);
 
-	if (!dsi->hw_preconfigured) {
 	/*
 	 * Enable the DSI block.
 	 */
@@ -759,7 +758,6 @@ static void sun6i_dsi_encoder_enable(struct drm_encoder *encoder)
 	sun6i_dsi_setup_inst_loop(dsi, mode);
 	sun6i_dsi_setup_format(dsi, mode);
 	sun6i_dsi_setup_timings(dsi, mode);
-	}
 
 	phy_init(dsi->dphy);
 
@@ -789,15 +787,11 @@ static void sun6i_dsi_encoder_enable(struct drm_encoder *encoder)
 	if (dsi->panel)
 		drm_panel_enable(dsi->panel);
 
-	if (!dsi->hw_preconfigured) {
 	sun6i_dsi_start(dsi, DSI_START_HSC);
 
 	udelay(1000);
 
 	sun6i_dsi_start(dsi, DSI_START_HSD);
-	}
-
-	dsi->hw_preconfigured = false;
 }
 
 static void sun6i_dsi_encoder_disable(struct drm_encoder *encoder)
@@ -1111,7 +1105,6 @@ static int sun6i_dsi_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct sun6i_dsi *dsi;
 	void __iomem *base;
-	u32 fb_start;
 	int ret;
 
 	variant = device_get_match_data(dev);
@@ -1126,12 +1119,6 @@ static int sun6i_dsi_probe(struct platform_device *pdev)
 	dsi->host.ops = &sun6i_dsi_host_ops;
 	dsi->host.dev = dev;
 	dsi->variant = variant;
-
-	ret = of_property_read_u32_index(of_chosen, "p-boot,framebuffer-start", 0, &fb_start);
-	if (ret == 0) {
-		/* the display pipeline is already initialized by p-boot */
-		dsi->hw_preconfigured = true;
-	}
 
 	base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(base)) {
@@ -1213,7 +1200,7 @@ err_attach_clk:
 	return ret;
 }
 
-static int sun6i_dsi_remove(struct platform_device *pdev)
+static void sun6i_dsi_remove(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct sun6i_dsi *dsi = dev_get_drvdata(dev);
@@ -1224,8 +1211,6 @@ static int sun6i_dsi_remove(struct platform_device *pdev)
 		clk_rate_exclusive_put(dsi->mod_clk);
 
 	regmap_mmio_detach_clk(dsi->regs);
-
-	return 0;
 }
 
 static const struct sun6i_dsi_variant sun6i_a31_mipi_dsi_variant = {
@@ -1259,7 +1244,7 @@ MODULE_DEVICE_TABLE(of, sun6i_dsi_of_table);
 
 static struct platform_driver sun6i_dsi_platform_driver = {
 	.probe		= sun6i_dsi_probe,
-	.remove		= sun6i_dsi_remove,
+	.remove_new	= sun6i_dsi_remove,
 	.driver		= {
 		.name		= "sun6i-mipi-dsi",
 		.of_match_table	= sun6i_dsi_of_table,

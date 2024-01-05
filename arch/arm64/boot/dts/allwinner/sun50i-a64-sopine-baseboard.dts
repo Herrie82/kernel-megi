@@ -96,10 +96,6 @@
 	};
 };
 
-&i2s2 {
-	status = "okay";
-};
-
 &mdio {
 	ext_rgmii_phy: ethernet-phy@1 {
 		compatible = "ethernet-phy-ieee802.3-c22";
@@ -170,10 +166,6 @@
 			"ADCL", "Left ADC",
 			"ADCR", "Right ADC",
 			"MIC2", "Microphone Jack";
-	status = "okay";
-};
-
-&sound_hdmi {
 	status = "okay";
 };
 

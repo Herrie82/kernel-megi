@@ -1,24 +1,4 @@
-CONFIG_BES2600_WLAN_SDIO = y
-CONFIG_BES2600_WLAN_USB = n
-CONFIG_BES2600_WLAN_SPI = n
-CONFIG_BES2600_USE_GPIO_IRQ = n
-CONFIG_BES2600_5GHZ_SUPPORT = y
-CONFIG_BES2600_WAPI_SUPPORT = y
-CONFIG_BES2600_USE_STE_EXTENSIONS = n
-CONFIG_BES2600_DISABLE_BEACON_HINTS = n
-CONFIG_BES2600_TESTMODE = n
-CONFIG_BES2600_DEBUGFS = y
-CONFIG_BES2600_BH_DEBUG = n
-CONFIG_BES2600_WSM_DEBUG = n
-CONFIG_BES2600_WSM_DUMPS = n
-CONFIG_BES2600_WSM_DUMPS_SHORT = y
-CONFIG_BES2600_TXRX_DEBUG = n
-CONFIG_BES2600_TX_POLICY_DEBUG = n
-CONFIG_BES2600_STA_DEBUG = n
-CONFIG_BES2600_DUMP_ON_ERROR = n
-CONFIG_BES2600_ITP = n
-
-
+KERN_DIR = /lib/modules/$(shell uname -r)/build
 # feature option
 BES2600                                 ?= m
 
@@ -27,7 +7,7 @@ CONFIG_BES2600_WLAN_SPI                 ?= n
 CONFIG_BES2600_WLAN_USB                 ?= n
 
 CONFIG_BES2600_VENDOR_CMD               ?= y
-CONFIG_BES2600_TESTMODE                 ?= n
+CONFIG_BES2600_TESTMODE                 ?= y
 
 CONFIG_BES2600_WAPI_SUPPORT             ?= n
 CONFIG_BES2600_5GHZ_SUPPORT             ?= y
@@ -38,9 +18,7 @@ AP_AGGREGATE_FW_FIX                     ?= y
 CONFIG_BES2600_BT                       ?= n
 WIFI_BT_COEXIST_EPTA_ENABLE             ?= y
 WIFI_BT_COEXIST_EPTA_FDD                ?= n
-ifneq ($(CONFIG_BES2600_WLAN_USB),y)
 CONFIG_BES2600_WOWLAN                   ?= y
-endif
 CONFIG_BES2600_LISTEN_INTERVAL          ?= 3
 BSS_LOSS_CHECK                          ?= y
 
@@ -59,6 +37,7 @@ PLAT_ROCKCHIP                           ?= n
 PLAT_UBUNTU_VUB300                      ?= n
 PLAT_QCOM_QM215                         ?= n
 PLAT_CVITEK_182X                        ?= n
+PLAT_PINETAB                            ?= y
 
 BES2600_GPIO_WAKEUP_AP                  ?= n
 BES2600_WRITE_DPD_TO_FILE               ?= n
@@ -81,7 +60,7 @@ BES2600_FASTPS_IDLE_TIME		?= 8
 #2.read from file(macaddr of customers)
 #3.read from file(macaddr template)
 #4.random macaddr
-GET_MAC_ADDR_METHOD                     ?= 0
+GET_MAC_ADDR_METHOD                     ?= 4
 
 ifeq ($(CONFIG_BES2600_DEBUGFS),y)
 BES2600_DUMP_FW_DPD_LOG                 ?= n
@@ -111,13 +90,13 @@ endif
 ifeq ($(CONFIG_BES2600_CALIB_FROM_LINUX),y)
 FACTORY_CRC_CHECK                    ?= n
 FACTORY_SAVE_MULTI_PATH              ?= y
-STANDARD_FACTORY_EFUSE_FLAG          ?= n
+STANDARD_FACTORY_EFUSE_FLAG          ?= y
 ifeq ($(FACTORY_SAVE_MULTI_PATH),y)
 FACTORY_PATH                         ?= /data/cfg/bes2600_factory.txt
 FACTORY_DEFAULT_PATH                 ?= /lib/firmware/bes2600_factory.txt
 else ifneq ($(filter y,$(PLAT_ALLWINNER_R329) $(PLAT_QCOM_QM215)),)
 FACTORY_PATH ?= /data/wifi/bes2600_factory.txt
-else ifeq ($(PLAT_ALLWINNER_T507),y)
+else ifneq ($(filter y,$(PLAT_ALLWINNER_T507) $(PLAT_ROCKCHIP)),)
 FACTORY_PATH ?= /vendor/firmware/bes2600_factory.txt
 endif
 endif
@@ -202,10 +181,9 @@ ccflags-y += $(call boolen_flag,PLAT_UBUNTU_VUB300,y)
 ccflags-y += $(call boolen_flag,PLAT_ROCKCHIP,y)
 ccflags-y += $(call boolen_flag,PLAT_QCOM_QM215,y)
 ccflags-y += $(call boolen_flag,PLAT_CVITEK_182X,y)
+ccflags-y += $(call boolen_flag,PLAT_PINETAB,y)
 
 ccflags-y += $(call boolen_flag,CONFIG_BES2600_VENDOR_CMD,y)
-
-ccflags-y += $(call boolen_flag,CONFIG_BES2600_USE_STE_EXTENSIONS,y)
 
 ccflags-y += $(call boolen_flag,CONFIG_BES2600_5GHZ_SUPPORT,y)
 ccflags-y += $(call boolen_flag,CONFIG_BES2600_STATIC_SDD,y)
@@ -280,6 +258,7 @@ ccflags-y += -DDCW1260_DETECTION_LOGIC
 # sdd options
 ccflags-y += -DTEST_11B=0
 ccflags-y += -DDPD_CALI=0
+ccflags-y += -DDPD_CALI=0
 ccflags-y += -DALI_CONFG=0
 ccflags-y += -DCHIP_WIFI_ROM_VER=1
 ccflags-y += -DWIFI_OUT_FEM=0
@@ -338,3 +317,8 @@ bes2600-y += bes2600_factory.o
 endif
 
 obj-$(BES2600) += bes2600.o
+
+all: modules
+
+modules clean:
+	$(MAKE) -C $(KERN_DIR) M=$(shell pwd) $@

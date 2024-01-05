@@ -628,6 +628,7 @@ void bes2600_btusb_uninit(struct usb_interface *interface)
 	kfree(data);
 	hci_unregister_dev(hdev);
 	hci_free_dev(hdev);
+	ar_usb->btdev = NULL;
 }
 
 

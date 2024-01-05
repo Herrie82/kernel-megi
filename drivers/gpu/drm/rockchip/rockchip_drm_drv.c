@@ -7,6 +7,7 @@
  */
 
 #include <linux/dma-mapping.h>
+#include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/module.h>
 #include <linux/of_graph.h>
@@ -201,7 +202,6 @@ err_unbind_all:
 	component_unbind_all(dev, drm_dev);
 err_free:
 	drm_dev_put(drm_dev);
-	dev_set_drvdata(dev, NULL);
 	return ret;
 }
 
@@ -218,7 +218,6 @@ static void rockchip_drm_unbind(struct device *dev)
 	rockchip_iommu_cleanup(drm_dev);
 
 	drm_dev_put(drm_dev);
-	dev_set_drvdata(dev, NULL);
 }
 
 DEFINE_DRM_GEM_FOPS(rockchip_drm_driver_fops);
@@ -226,10 +225,7 @@ DEFINE_DRM_GEM_FOPS(rockchip_drm_driver_fops);
 static const struct drm_driver rockchip_drm_driver = {
 	.driver_features	= DRIVER_MODESET | DRIVER_GEM | DRIVER_ATOMIC,
 	.dumb_create		= rockchip_gem_dumb_create,
-	.prime_handle_to_fd	= drm_gem_prime_handle_to_fd,
-	.prime_fd_to_handle	= drm_gem_prime_fd_to_handle,
 	.gem_prime_import_sg_table	= rockchip_gem_prime_import_sg_table,
-	.gem_prime_mmap		= drm_gem_prime_mmap,
 	.fops			= &rockchip_drm_driver_fops,
 	.name	= DRIVER_NAME,
 	.desc	= DRIVER_DESC,
@@ -358,43 +354,6 @@ static void rockchip_drm_match_remove(struct device *dev)
 		device_link_del(link);
 }
 
-/*
- * Check if ISP block linked to a mipi-dsi device via phys phandle is
- * enabled in device tree.
- */
-static bool rockchip_drm_is_mipi1_and_used_by_isp(struct device *dev)
-{
-	struct device_node *np = NULL, *phy_np;
-
-	if (!of_device_is_compatible(dev->of_node, "rockchip,rk3399-mipi-dsi"))
-		return false;
-
-	while (true) {
-		np = of_find_compatible_node(np, NULL, "rockchip,rk3399-cif-isp");
-		if (!np)
-			break;
-
-		if (!of_device_is_available(np)) {
-			of_node_put(np);
-			continue;
-		}
-
-		phy_np = of_parse_phandle(np, "phys", 0);
-		if (!phy_np) {
-			of_node_put(np);
-			continue;
-		}
-
-		of_node_put(phy_np);
-		of_node_put(np);
-
-		if (phy_np == dev->of_node)
-			return true;
-	}
-
-	return false;
-}
-
 static struct component_match *rockchip_drm_match_add(struct device *dev)
 {
 	struct component_match *match = NULL;
@@ -411,16 +370,6 @@ static struct component_match *rockchip_drm_match_add(struct device *dev)
 
 			if (!d)
 				break;
-
-			/*
-			 * If mipi1 is connected to ISP, we don't want to wait for mipi1 component,
-			 * because it will not be used by DRM anyway, to not tie success of camera
-			 * driver probe to display pipeline initialization.
-			 */
-			if (rockchip_drm_is_mipi1_and_used_by_isp(d)) {
-				dev_info(d, "used by ISP1, skipping from DRM\n");
-				continue;
-			}
 
 			device_link_add(dev, d, DL_FLAG_STATELESS);
 			component_match_add(dev, &match, component_compare_dev, d);
@@ -499,13 +448,11 @@ static int rockchip_drm_platform_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int rockchip_drm_platform_remove(struct platform_device *pdev)
+static void rockchip_drm_platform_remove(struct platform_device *pdev)
 {
 	component_master_del(&pdev->dev, &rockchip_drm_ops);
 
 	rockchip_drm_match_remove(&pdev->dev);
-
-	return 0;
 }
 
 static void rockchip_drm_platform_shutdown(struct platform_device *pdev)
@@ -524,7 +471,7 @@ MODULE_DEVICE_TABLE(of, rockchip_drm_dt_ids);
 
 static struct platform_driver rockchip_drm_platform_driver = {
 	.probe = rockchip_drm_platform_probe,
-	.remove = rockchip_drm_platform_remove,
+	.remove_new = rockchip_drm_platform_remove,
 	.shutdown = rockchip_drm_platform_shutdown,
 	.driver = {
 		.name = "rockchip-drm",

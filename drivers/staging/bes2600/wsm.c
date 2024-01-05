@@ -2740,7 +2740,11 @@ static int bes2600_get_prio_queue(struct bes2600_vif *priv,
 		edca = &priv->edca.params[i];
 		score = ((edca->aifns + edca->cwMin) << 16) +
 				(edca->cwMax - edca->cwMin) *
-				(get_random_long() & 0xFFFF);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0)
+				(get_random_u32() & 0xFFFF);
+#else
+				(get_random_int() & 0xFFFF);
+#endif
 		if (score < best && (winner < 0 || i != 3)) {
 			best = score;
 			winner = i;

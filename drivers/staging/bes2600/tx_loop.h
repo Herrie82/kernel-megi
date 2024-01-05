@@ -13,23 +13,22 @@
 
 #include "bes2600.h"
 
-struct bes2600_tx_loop
-{
-        bool enabled;
-        spinlock_t tx_loop_lock;
-        u8 start_lmac_seq;
-        u8 start_mcu_seq;
-        struct sk_buff_head rx_queue;
-        u8 *wsm_cmd_ptr;
-        struct list_head pending_record_list;
-        spinlock_t pending_record_lock;
+struct bes2600_tx_loop {
+	bool enabled;
+	spinlock_t tx_loop_lock;
+	u8 start_lmac_seq;
+	u8 start_mcu_seq;
+	struct sk_buff_head rx_queue;
+	u8 *wsm_cmd_ptr;
+	struct list_head pending_record_list;
+	spinlock_t pending_record_lock;
 };
 
 void bes2600_tx_loop_init(struct bes2600_common *hw_priv);
 void bes2600_tx_loop_record_wsm_cmd(struct bes2600_common *hw_priv, u8 *wsm_cmd);
 void bes2600_tx_loop_clear_wsm_cmd(struct bes2600_common *hw_priv);
 struct sk_buff *bes2600_tx_loop_read(struct bes2600_common *hw_priv);
-void bes2600_tx_loop_set_enable(struct bes2600_common *hw_priv);
+void bes2600_tx_loop_set_enable(struct bes2600_common *hw_priv, bool need_warn);
 void bes2600_tx_loop_pipe_send(struct bes2600_common *hw_priv, u8 *buf, u32 len);
 
 #endif

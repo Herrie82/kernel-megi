@@ -606,25 +606,37 @@ static int bes2600_sdio_off(const struct bes2600_platform_data_sdio *pdata)
 {
 	bes2600_info(BES2600_DBG_SDIO, "%s enter\n", __func__);
 
-	gpiod_direction_output(pdata->powerup, 0);
+#if defined(PLAT_ALLWINNER)
+	sunxi_wlan_set_power(false);
+#endif
 
-	gpiod_direction_output(pdata->reset, 0);
+#if defined(PLAT_ROCKCHIP)
+	rockchip_wifi_set_carddetect(0);
+	rockchip_wifi_power(0);
+#endif
+
+	gpiod_direction_output(pdata->powerup, GPIOD_OUT_LOW);
+	gpiod_direction_output(pdata->reset, GPIOD_OUT_LOW);
 
 	return 0;
 }
 
 static int bes2600_sdio_on(const struct bes2600_platform_data_sdio *pdata)
 {
-
 	bes2600_info(BES2600_DBG_SDIO, "%s enter\n", __func__);
 
-	gpiod_direction_output(pdata->powerup, 1);
+#if defined(PLAT_ALLWINNER)
+	sunxi_wlan_set_power(true);
+#endif
 
-	msleep(10);
-
-	gpiod_direction_output(pdata->reset, 0);
-
+#ifdef PLAT_ROCKCHIP
+	rockchip_wifi_power(0);
+	rockchip_wifi_power(1);
 	bes2600_chrdev_start_bus_probe();
+	rockchip_wifi_set_carddetect(1);
+#endif
+
+	gpiod_direction_output(pdata->powerup, GPIOD_OUT_HIGH);
 
 #if defined(BES2600_BOOT_UART_TO_SDIO)
 	return bes2600_boot_uart_to_sdio(&bes2600_sdio_sbus_ops);
@@ -920,7 +932,7 @@ static void sdio_rx_work(struct work_struct *work)
 	u8 *buf = self->rx_buffer;
 
 	/* don't read/write sdio when sdio error */
-	if(bes2600_chrdev_is_bus_error())
+	if (bes2600_chrdev_is_bus_error())
 		return;
 
 	bes2600_gpio_wakeup_mcu(self, GPIO_WAKE_FLAG_SDIO_RX);
@@ -1022,7 +1034,7 @@ static void *bes2600_sdio_pipe_read(struct sbus_priv *self)
 {
 	struct sk_buff *skb;
 
-	if(bes2600_chrdev_is_bus_error()) {
+	if (bes2600_chrdev_is_bus_error()) {
 		return bes2600_tx_loop_read(self->core);
 	}
 
@@ -1189,7 +1201,7 @@ static void sdio_tx_work(struct work_struct *work)
 	enum DRIVER_TO_MCU_MSG_ST driver_to_mcu = ST_EXIT;
 
 	/* don't read/write sdio when sdio error */
-	if(bes2600_chrdev_is_bus_error())
+	if (bes2600_chrdev_is_bus_error())
 		return;
 
 	if (bes2600_chrdev_is_signal_mode()) {
@@ -1293,7 +1305,7 @@ static int bes2600_sdio_pipe_send(struct sbus_priv *self, u8 pipe, u32 len, u8 *
 {
 	struct bes_sdio_tx_list_t * desc = NULL;
 
-	if(bes2600_chrdev_is_bus_error()) {
+	if (bes2600_chrdev_is_bus_error()) {
 		bes2600_tx_loop_pipe_send(self->core, buf, len);
 		return 0;
 	}
@@ -1317,7 +1329,7 @@ static int bes2600_sdio_pipe_send(struct sbus_priv *self, u8 pipe, u32 len, u8 *
 }
 #endif
 
-static int bes2600_sdio_misc_init(struct sbus_priv *self, struct bes2600_common *ar)
+static int bes2600_sdio_misc_init(struct sbus_priv *self, struct bes2600_common *core)
 {
 #ifdef BES_SDIO_RXTX_TOGGLE
 	self->rx_data_toggle = 0;
@@ -1358,8 +1370,7 @@ err2:
 	return 0;
 }
 
-static struct bes2600_platform_data_sdio bes_sdio_plat_data = {
-};
+static struct bes2600_platform_data_sdio bes_sdio_plat_data;
 
 struct bes2600_platform_data_sdio *bes2600_get_platform_data(void)
 {
@@ -1368,42 +1379,43 @@ struct bes2600_platform_data_sdio *bes2600_get_platform_data(void)
 
 static int bes2600_platform_data_init(void)
 {
+	int ret = 0;
 	struct bes2600_platform_data_sdio *pdata = bes2600_get_platform_data();
 	struct device_node *np;
-	int ret = 0;
 
-	np = of_find_compatible_node(NULL, NULL, "bestechnic,bes2600");
+	np = of_find_compatible_node(NULL, NULL, "bestechnic,bes2600-sdio");
 	if (!np) {
-		pr_err("bestechnic,bes2600 device node found!\n");
-		return -ENODEV;
+		bes2600_err(BES2600_DBG_SDIO, "bes2600-sdio device node not found!\n");
+		goto exit;
 	}
 
-	pdata->reset = fwnode_gpiod_get_index(&np->fwnode, "reset", 0, GPIOD_OUT_HIGH, "bes2600-reset");
+	/* Ensure I/Os are pulled low */
+	pdata->reset = fwnode_gpiod_get_index(&np->fwnode, "reset", 0, GPIOD_OUT_LOW, "bes2600_wlan_reset");
 	if (IS_ERR(pdata->reset)) {
-		bes2600_err(BES2600_DBG_SDIO, "Can't request reset gpio (%ld)\n", PTR_ERR(pdata->reset));
+		bes2600_err(BES2600_DBG_SDIO, "can't request reset_gpio (%ld)\n", PTR_ERR(pdata->reset));
 		pdata->reset = NULL;
-	}
+ 	}
 
-	pdata->powerup = fwnode_gpiod_get_index(&np->fwnode, "powerup", 0, GPIOD_OUT_LOW, "bes2600-powerup");
+	pdata->powerup = fwnode_gpiod_get_index(&np->fwnode, "powerup", 0, GPIOD_OUT_LOW, "bes2600_wlan_powerup");
 	if (IS_ERR(pdata->powerup)) {
-		bes2600_err(BES2600_DBG_SDIO, "Can't request powerup gpio (%ld)\n", PTR_ERR(pdata->powerup));
+		bes2600_err(BES2600_DBG_SDIO, "can't request powerup_gpio (%ld)\n", PTR_ERR(pdata->powerup));
 		pdata->powerup = NULL;
-	}
+ 	}
 
-	pdata->wakeup = fwnode_gpiod_get_index(&np->fwnode, "device-wakeup", 0, GPIOD_OUT_LOW, "bes2600-device-wakeup");
+	pdata->wakeup = fwnode_gpiod_get_index(&np->fwnode, "wakeup", 0, GPIOD_OUT_LOW, "bes2600_wakeup");
 	if (IS_ERR(pdata->wakeup)) {
-		bes2600_err(BES2600_DBG_SDIO, "Can't request device wakeup gpio (%ld)\n", PTR_ERR(pdata->wakeup));
+		bes2600_err(BES2600_DBG_SDIO, "can't request wakeup_gpio (%ld)\n", PTR_ERR(pdata->wakeup));
 		pdata->wakeup = NULL;
-	}
+ 	}
 
-	pdata->host_wakeup = fwnode_gpiod_get_index(&np->fwnode, "host-wakeup", 0, GPIOD_IN, "bes2600-host-wakeup");
+	pdata->host_wakeup = fwnode_gpiod_get_index(&np->fwnode, "host-wakeup", 0, GPIOD_IN, "bes2600_host_irq");
 	if (IS_ERR(pdata->host_wakeup)) {
-		bes2600_err(BES2600_DBG_SDIO, "Can't request host wakeup gpio (%ld)\n", PTR_ERR(pdata->host_wakeup));
+		bes2600_err(BES2600_DBG_SDIO, "can't request host_wake_gpio (%ld)\n", PTR_ERR(pdata->host_wakeup));
 		pdata->host_wakeup = NULL;
-	}
+ 	}
 
-	of_node_put(np);
-
+	pdata->wlan_bt_hostwake_registered = false;
+exit:
 	return ret;
 }
 
@@ -1423,14 +1435,9 @@ static int bes2600_sdio_reset(struct sbus_priv *self)
 
 	bes2600_info(BES2600_DBG_SDIO, "%s ...\n", __func__);
 
-	if (plat_data == NULL)
-		return 0;
-
-	if (plat_data->reset) {
-		gpiod_set_value(plat_data->reset, 1);
-		mdelay(50);
-		gpiod_set_value(plat_data->reset, 0);
-	}
+	gpiod_direction_output(plat_data->reset, GPIOD_OUT_HIGH);
+	mdelay(50);
+	gpiod_direction_output(plat_data->reset, GPIOD_OUT_LOW);
 
 	return 0;
 }
@@ -1468,8 +1475,6 @@ static void bes2600_gpio_wakeup_mcu(struct sbus_priv *self, int flag)
 {
 	bool gpio_wakeup = false;
 	const struct bes2600_platform_data_sdio *pdata = bes2600_get_platform_data();
-	if (pdata == NULL)
-		return;
 
 	bes2600_dbg(BES2600_DBG_SDIO, "%s with %d\n", __func__, flag);
 
@@ -1489,13 +1494,8 @@ static void bes2600_gpio_wakeup_mcu(struct sbus_priv *self, int flag)
 	/* do wakeup mcu operation */
 	if(gpio_wakeup) {
 		bes2600_dbg(BES2600_DBG_SDIO, "pull high gpio by flag:%d\n", flag);
-		if (pdata->wakeup) {
-			gpiod_set_value(pdata->wakeup, 1);
-			msleep(10);
-		} else {
-			bes2600_err(BES2600_DBG_SDIO,
-				"%s, wakeup gpio is invalid\n", __func__);
-		}
+		gpiod_direction_output(pdata->wakeup, GPIOD_OUT_HIGH);
+		msleep(10);
 	}
 
 	/* set flag of gpio_wakeup_flags */
@@ -1508,8 +1508,6 @@ static void bes2600_gpio_allow_mcu_sleep(struct sbus_priv *self, int flag)
 {
 	bool gpio_sleep = false;
 	const struct bes2600_platform_data_sdio *pdata = bes2600_get_platform_data();
-	if (pdata == NULL)
-		return;
 
 	bes2600_dbg(BES2600_DBG_SDIO, "%s with %d\n", __func__, flag);
 
@@ -1532,12 +1530,7 @@ static void bes2600_gpio_allow_mcu_sleep(struct sbus_priv *self, int flag)
 	/* do wakeup mcu operation */
 	if(gpio_sleep) {
 		bes2600_dbg(BES2600_DBG_SDIO, "pull low gpio by flag:%d\n", flag);
-		if (pdata->wakeup) {
-			gpiod_set_value(pdata->wakeup, 0);
-		} else {
-			bes2600_err(BES2600_DBG_SDIO,
-				"%s, wakeup gpio is invalid\n", __func__);
-		}
+		gpiod_direction_output(pdata->wakeup, GPIOD_OUT_LOW);
 	}
 
 	mutex_unlock(&self->io_mutex);
@@ -1557,7 +1550,7 @@ int bes2600_sdio_active(struct sbus_priv *self, int sub_system)
 		return -EINVAL;
 
 	/* don't read/write sdio when sdio error */
-	if(bes2600_chrdev_is_bus_error())
+	if (bes2600_chrdev_is_bus_error())
 		return 0;
 
 	/* prevent concurrent access */
@@ -1731,7 +1724,7 @@ int bes2600_sdio_deactive(struct sbus_priv *self, int sub_system)
 	int ret;
 
 	/* don't read/write sdio when sdio error */
-	if(bes2600_chrdev_is_bus_error())
+	if (bes2600_chrdev_is_bus_error())
 		return 0;
 
 	/* notify device deactive event */
@@ -1876,16 +1869,22 @@ static void bes2600_sdio_power_down(struct sbus_priv *self)
 	sdio_writeb(self->func, tmp_val, BES_HOST_INT_REG_ID, &ret);
 	sdio_release_host(self->func);
 #else
+#if defined(PLAT_ROCKCHIP)
+	rockchip_wifi_power(0);
+#endif
 
+#if defined(PLAT_ALLWINNER)
+	sunxi_wlan_set_power(false);
+#endif
 	struct bes2600_platform_data_sdio *pdata = bes2600_get_platform_data();
-
-	gpiod_direction_output(pdata->powerup, 0);
+	gpiod_direction_output(pdata->powerup, GPIOD_OUT_LOW);
 #endif
 
 	msleep(10);
 
 	self->func->card->host->caps &= ~MMC_CAP_NONREMOVABLE;
 	schedule_work(&self->sdio_scan_work);
+
 }
 
 static int bes2600_sdio_power_switch(struct sbus_priv *self, int on)
@@ -1908,9 +1907,6 @@ static void bes2600_sdio_halt_device(struct sbus_priv *self)
 static bool bes2600_sdio_wakeup_source(struct sbus_priv *self)
 {
 	struct bes2600_platform_data_sdio *pdata = bes2600_get_platform_data();
-
-	if (!pdata)
-		return false;
 
 	if(pdata->wakeup_source) {
 		pdata->wakeup_source = false;

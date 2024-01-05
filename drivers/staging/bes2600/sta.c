@@ -157,13 +157,10 @@ int bes2600_start(struct ieee80211_hw *dev)
 	}
 	down(&hw_priv->conf_lock);
 
-#ifndef CONFIG_BES2600_WLAN_USB
-#ifdef CONFIG_BES2600_WLAN_BES
 	ret = bes2600_wifi_start(hw_priv);
 	if (ret)
 		goto out;
-#endif
-#endif
+
 	tx_policy_init(hw_priv);
 
 
@@ -249,7 +246,7 @@ void bes2600_stop(struct ieee80211_hw *dev)
 		spin_unlock(&priv->vif_lock);
 	}
 	spin_unlock(&hw_priv->vif_list_lock);
-	
+
 
 	/* HACK! */
 	if (atomic_xchg(&hw_priv->tx_lock, 1) != 1)
@@ -275,11 +272,7 @@ void bes2600_stop(struct ieee80211_hw *dev)
 	coex_stop(hw_priv);
 #endif
 
-#ifndef CONFIG_BES2600_WLAN_USB
-#ifdef CONFIG_BES2600_WLAN_BES
 	bes2600_wifi_stop(hw_priv);
-#endif
-#endif
 
 	tx_policy_deinit(hw_priv);
 
@@ -462,7 +455,6 @@ void bes2600_remove_interface(struct ieee80211_hw *dev,
 	 * join_status to default can be removed as dev_priv will be freed by
 	 * mac80211 */
 	priv->delayed_link_loss = 0;
-	priv->join_status = BES2600_JOIN_STATUS_PASSIVE;
 	wsm_unlock_tx(hw_priv);
 
 	if ((priv->if_id ==1) && (priv->mode == NL80211_IFTYPE_AP
@@ -811,7 +803,10 @@ void bes2600_configure_filter(struct ieee80211_hw *hw,
 }
 
 int bes2600_conf_tx(struct ieee80211_hw *dev, struct ieee80211_vif *vif,
-		unsigned int link_id, u16 queue, const struct ieee80211_tx_queue_params *params)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0)
+		unsigned int link_id,
+#endif
+		u16 queue, const struct ieee80211_tx_queue_params *params)
 {
 	struct bes2600_common *hw_priv = dev->priv;
 	struct bes2600_vif *priv = cw12xx_get_vif_from_ieee80211(vif);
@@ -1186,7 +1181,7 @@ int __bes2600_flush(struct bes2600_common *hw_priv, bool drop, int if_id)
 		__cw12xx_hwpriv_to_vifpriv(hw_priv, if_id);
 
 	/* clear tx queue directly if there is a bus error */
-	if(hw_priv->bh_error)
+	if (hw_priv->bh_error || bes2600_chrdev_is_bus_error())
 		drop = true;
 
 	for (;;) {
@@ -1561,7 +1556,11 @@ void bes2600_bss_loss_work(struct work_struct *work)
 
 	spin_lock(&priv->bss_loss_lock);
 #ifdef BSS_LOSS_CHECK
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0))
 	if (!priv->vif->cfg.assoc) {
+#else
+	if (!priv->vif->bss_conf.assoc) {
+#endif
 		priv->bss_loss_status = BES2600_BSS_LOSS_NONE;
 		spin_unlock(&priv->bss_loss_lock);
 		bl_ck_cnt = 0;
@@ -1576,9 +1575,10 @@ void bes2600_bss_loss_work(struct work_struct *work)
 		priv->cmq_tx_success_count = 0;
 		bl_ck_cnt = 0;
 		bl_cfm_cnt = 0;
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,10,0))
-		// skb = ieee80211_nullfunc_get(priv->hw, priv->vif, false);
-		skb = ieee80211_nullfunc_get(priv->hw, priv->vif, -1, false);
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0))
+		skb = ieee80211_nullfunc_get(priv->hw, priv->vif, 0, false);
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4,10,0))
+		skb = ieee80211_nullfunc_get(priv->hw, priv->vif, false);
 #else
 		skb = ieee80211_nullfunc_get(priv->hw, priv->vif);
 #endif
@@ -1607,9 +1607,10 @@ void bes2600_bss_loss_work(struct work_struct *work)
 		if (bl_ck_cnt++ < BSS_LOSS_CK_THR) {
 			spin_unlock(&priv->bss_loss_lock);
 			priv->bss_loss_status = BES2600_BSS_LOSS_CHECKING;
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,10,0))
-			// skb = ieee80211_nullfunc_get(priv->hw, priv->vif, false);
-			skb = ieee80211_nullfunc_get(priv->hw, priv->vif, -1, false);
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0))
+			skb = ieee80211_nullfunc_get(priv->hw, priv->vif, 0, false);
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4,10,0))
+			skb = ieee80211_nullfunc_get(priv->hw, priv->vif, false);
 #else
 			skb = ieee80211_nullfunc_get(priv->hw, priv->vif);
 #endif
@@ -1644,9 +1645,10 @@ void bes2600_bss_loss_work(struct work_struct *work)
 		if (bl_cfm_cnt++ < BSS_LOSS_CFM_THR) {
 			spin_unlock(&priv->bss_loss_lock);
 			priv->bss_loss_status = BES2600_BSS_LOSS_CHECKING;
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,10,0))
-			// skb = ieee80211_nullfunc_get(priv->hw, priv->vif, false);
-			skb = ieee80211_nullfunc_get(priv->hw, priv->vif, -1, false);
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0))
+			skb = ieee80211_nullfunc_get(priv->hw, priv->vif, 0, false);
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4,10,0))
+			skb = ieee80211_nullfunc_get(priv->hw, priv->vif, false);
 #else
 			skb = ieee80211_nullfunc_get(priv->hw, priv->vif);
 #endif
@@ -2361,8 +2363,6 @@ void bes2600_join_work(struct work_struct *work)
 			priv->join_status = BES2600_JOIN_STATUS_STA;
 			atomic_set(&priv->connect_in_process, 1);
 
-			cancel_delayed_work_sync(&priv->join_timeout);
-
 			/* Due to beacon filtering it is possible that the
 			 * AP's beacon is not known for the mac80211 stack.
 			 * Disable filtering temporary to make sure the stack
@@ -2483,6 +2483,7 @@ void bes2600_unjoin_work(struct work_struct *work)
 			bes2600_info(BES2600_DBG_STA, "UNJOIN 11BG %d\n",hw_priv->vif0_throttle);
 		}
 		bes2600_info(BES2600_DBG_STA, "[STA] Unjoin.\n");
+		priv->join_status = BES2600_JOIN_STATUS_PASSIVE;
 	}
 
 	up(&hw_priv->conf_lock);

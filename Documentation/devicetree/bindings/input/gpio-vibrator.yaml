@@ -24,12 +24,7 @@ properties:
 
 required:
   - compatible
-
-anyOf:
-  - required:
-    - enable-gpios
-  - required:
-    - vcc-supply
+  - enable-gpios
 
 additionalProperties: false
 

@@ -60,7 +60,7 @@
 
 		key-sw4 {
 			label = "sw4";
-			linux,code = <KEY_POWER>;
+			linux,code = <BTN_0>;
 			gpios = <&r_pio 0 3 GPIO_ACTIVE_LOW>;
 			wakeup-source;
 		};
@@ -145,10 +145,6 @@
 	};
 };
 
-&i2s2 {
-	status = "okay";
-};
-
 &ir {
 	pinctrl-names = "default";
 	pinctrl-0 = <&r_ir_rx_pin>;
@@ -192,10 +188,6 @@
 		regulator-boot-on;
 		regulator-always-on;
 	};
-};
-
-&sound_hdmi {
-	status = "okay";
 };
 
 &spi0  {

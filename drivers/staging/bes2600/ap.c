@@ -248,12 +248,13 @@ static int bes2600_set_tim_impl(struct bes2600_vif *priv, bool aid0_bit_set)
 
 	bes2600_dbg(BES2600_DBG_AP, "[AP] %s mcast: %s.\n",
 		__func__, aid0_bit_set ? "ena" : "dis");
-
-	// skb = ieee80211_beacon_get_tim(priv->hw, priv->vif,
-	// 		&tim_offset, &tim_length);
-	   skb = ieee80211_beacon_get_tim(priv->hw, priv->vif,
-				       &tim_offset, &tim_length, 0);
-	
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0))
+	skb = ieee80211_beacon_get_tim(priv->hw, priv->vif,
+			&tim_offset, &tim_length, 0);
+#else
+	skb = ieee80211_beacon_get_tim(priv->hw, priv->vif,
+			&tim_offset, &tim_length);
+#endif
 	if (!skb) {
 		if (!__bes2600_flush(hw_priv, true, priv->if_id))
 			wsm_unlock_tx(hw_priv);
@@ -396,19 +397,31 @@ static int bes2600_set_btcoexinfo(struct bes2600_vif *priv)
 void bes2600_bss_info_changed(struct ieee80211_hw *dev,
 			     struct ieee80211_vif *vif,
 			     struct ieee80211_bss_conf *info,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0)
 			     u64 changed)
+#else
+			     u32 changed)
+#endif
 {
 	struct bes2600_common *hw_priv = dev->priv;
 	struct bes2600_vif *priv = cw12xx_get_vif_from_ieee80211(vif);
 	struct ieee80211_conf *conf = &dev->conf;
 	const u8 override_fpsm_timeout = BES2600_FASTPS_IDLE_TIME;
-	struct ieee80211_vif_cfg cfg;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
+	struct ieee80211_vif_cfg *cfg = &vif->cfg;
+#else
+	struct ieee80211_bss_conf *cfg = info,
+#endif
 
 #ifdef P2P_MULTIVIF
 	if (priv->if_id == CW12XX_GENERIC_IF_ID)
 		return;
 #endif
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0)
 	bes2600_info(BES2600_DBG_AP, "BSS CHANGED:	%08llx\n", changed);
+#else
+	bes2600_info(BES2600_DBG_AP, "BSS CHANGED:	%08x\n", changed);
+#endif
 	down(&hw_priv->conf_lock);
 	if (changed & BSS_CHANGED_BSSID) {
 #ifdef CONFIG_BES2600_TESTMODE
@@ -434,19 +447,19 @@ void bes2600_bss_info_changed(struct ieee80211_hw *dev,
 		struct wsm_arp_ipv4_filter filter = {0};
 		int i;
 		bes2600_dbg(BES2600_DBG_AP, "[STA] BSS_CHANGED_ARP_FILTER cnt: %d",
-				      vif->cfg.arp_addr_cnt);
+				     cfg->arp_addr_cnt);
 
 #ifdef WIFI_BT_COEXIST_EPTA_ENABLE
-		if (vif->cfg.arp_addr_cnt > 0) {
+		if (cfg->arp_addr_cnt > 0) {
 			bwifi_change_current_status(hw_priv, BWIFI_STATUS_GOT_IP);
 		}
 #endif
 		/* Currently only one IP address is supported by firmware.
 		 * In case of more IPs arp filtering will be disabled. */
-		if (vif->cfg.arp_addr_cnt > 0 &&
-		    vif->cfg.arp_addr_cnt <= WSM_MAX_ARP_IP_ADDRTABLE_ENTRIES) {
-			for (i = 0; i < vif->cfg.arp_addr_cnt; i++) {
-				filter.ipv4Address[i] = vif->cfg.arp_addr_list[i];
+		if (cfg->arp_addr_cnt > 0 &&
+		    cfg->arp_addr_cnt <= WSM_MAX_ARP_IP_ADDRTABLE_ENTRIES) {
+			for (i = 0; i < cfg->arp_addr_cnt; i++) {
+				filter.ipv4Address[i] = cfg->arp_addr_list[i];
 				bes2600_dbg(BES2600_DBG_AP, "[STA] addr[%d]: 0x%X\n",
 					  i, filter.ipv4Address[i]);
 			}
@@ -494,7 +507,7 @@ void bes2600_bss_info_changed(struct ieee80211_hw *dev,
 			priv->power_set_true = 0;
 			priv->user_power_set_true = 0;
 
-			if(!cfg.ps) {
+			if(!cfg->ps) {
 				bes2600_pwr_set_busy_event(priv->hw_priv, BES_PWR_LOCK_ON_PS_ACTIVE);
 			}
 		}
@@ -611,7 +624,7 @@ void bes2600_bss_info_changed(struct ieee80211_hw *dev,
 		priv->wep_default_key_id = -1;
 		wsm_unlock_tx(hw_priv);
 
-		if (!cfg.assoc /* && !info->ibss_joined */) {
+		if (!cfg->assoc /* && !info->ibss_joined */) {
 			#ifdef P2P_STA_COEX
 			priv->cqm_link_loss_count = 400;
 			priv->cqm_beacon_loss_count = 200;
@@ -633,8 +646,8 @@ void bes2600_bss_info_changed(struct ieee80211_hw *dev,
 		int is_combo = 0;
 		int i;
 		struct bes2600_vif *tmp_priv;
-		bes2600_info(BES2600_DBG_AP, "BSS_CHANGED_ASSOC assoc: %d.\n", vif->cfg.assoc );
-		if (cfg.assoc) { /* TODO: ibss_joined */
+		bes2600_info(BES2600_DBG_AP, "BSS_CHANGED_ASSOC assoc: %d.\n", cfg->assoc);
+		if (cfg->assoc) { /* TODO: ibss_joined */
 			struct ieee80211_sta *sta = NULL;
 			if (info->dtim_period)
 				priv->join_dtim_period = info->dtim_period;
@@ -658,11 +671,19 @@ void bes2600_bss_info_changed(struct ieee80211_hw *dev,
 				* mac80211 changes are available */
 				enum nl80211_channel_type ch_type;
 				BUG_ON(!hw_priv->channel);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
 				hw_priv->ht_info.ht_cap = sta->deflink.ht_cap;
+#else
+				hw_priv->ht_info.ht_cap = sta->ht_cap;
+#endif
 				priv->bss_params.operationalRateSet =
 					__cpu_to_le32(
 					bes2600_rate_mask_to_wsm(hw_priv,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
 					sta->deflink.supp_rates[
+#else
+					sta->supp_rates[
+#endif
 						hw_priv->channel->band]));
 				rcu_read_unlock();
 				ch_type = cfg80211_get_chandef_type(&info->chandef);
@@ -776,7 +797,7 @@ void bes2600_bss_info_changed(struct ieee80211_hw *dev,
 					priv->cqm_beacon_loss_count :
 					priv->cqm_link_loss_count;
 
-			priv->bss_params.aid = cfg.aid;
+			priv->bss_params.aid = cfg->aid;
 
 			if (priv->join_dtim_period < 1)
 				priv->join_dtim_period = 1;
@@ -982,7 +1003,7 @@ void bes2600_bss_info_changed(struct ieee80211_hw *dev,
 	if (changed & BSS_CHANGED_BANDWIDTH) {
 		enum nl80211_channel_type ch_type = cfg80211_get_chandef_type(&info->chandef);
 
-		if (cfg.assoc &&
+		if (cfg->assoc &&
 		    hw_priv->ht_info.channel_type != ch_type &&
 		    priv->join_status == BES2600_JOIN_STATUS_STA) {
 			struct wsm_switch_channel channel;
@@ -997,7 +1018,7 @@ void bes2600_bss_info_changed(struct ieee80211_hw *dev,
 	}
 
 	if (changed & BSS_CHANGED_PS) {
-		if (cfg.ps == false)
+		if (cfg->ps == false)
 			priv->powersave_mode.pmMode = WSM_PSM_ACTIVE;
 		else if (conf->dynamic_ps_timeout <= 0)
 			priv->powersave_mode.pmMode = WSM_PSM_PS;
@@ -1006,7 +1027,7 @@ void bes2600_bss_info_changed(struct ieee80211_hw *dev,
 
 		/* set/clear ps active power busy event */
 		if(priv->join_status == BES2600_JOIN_STATUS_STA) {
-			if(!cfg.ps) {
+			if(!cfg->ps) {
 				bes2600_pwr_set_busy_event(priv->hw_priv, BES_PWR_LOCK_ON_PS_ACTIVE);
 			} else {
 				bes2600_pwr_clear_busy_event(priv->hw_priv, BES_PWR_LOCK_ON_PS_ACTIVE);
@@ -1298,9 +1319,11 @@ static int bes2600_upload_beacon(struct bes2600_vif *priv)
 			hw_priv->channel->band == IEEE80211_BAND_5GHZ)
 #endif
 		frame.rate = WSM_TRANSMIT_RATE_6;
-
-	// frame.skb = ieee80211_beacon_get(priv->hw, priv->vif);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)
 	frame.skb = ieee80211_beacon_get(priv->hw, priv->vif, 0);
+#else
+	frame.skb = ieee80211_beacon_get(priv->hw, priv->vif);
+#endif
 	if (WARN_ON(!frame.skb))
 		return -ENOMEM;
 
@@ -1468,9 +1491,10 @@ static int bes2600_upload_null(struct bes2600_vif *priv)
 		.rate = 0xFF,
 	};
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,10,0))
-	// frame.skb = ieee80211_nullfunc_get(priv->hw, priv->vif, false);
-	frame.skb = ieee80211_nullfunc_get(priv->hw, priv->vif, -1, true);
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0))
+	frame.skb = ieee80211_nullfunc_get(priv->hw, priv->vif, 0, false);
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4,10,0))
+	frame.skb = ieee80211_nullfunc_get(priv->hw, priv->vif, false);
 #else
 	frame.skb = ieee80211_nullfunc_get(priv->hw, priv->vif);
 #endif
@@ -1494,9 +1518,10 @@ static int bes2600_upload_qosnull(struct bes2600_vif *priv)
 		.rate = 0xFF,
 	};
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,10,0))
-	// frame.skb = ieee80211_nullfunc_get(priv->hw, priv->vif, true);
-	frame.skb = ieee80211_nullfunc_get(priv->hw, priv->vif, -1, true);
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0))
+	frame.skb = ieee80211_nullfunc_get(priv->hw, priv->vif, 0, false);
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(4,10,0))
+	frame.skb = ieee80211_nullfunc_get(priv->hw, priv->vif, true);
 #else
 	frame.skb = ieee80211_nullfunc_get(priv->hw, priv->vif);
 #endif
@@ -1619,8 +1644,11 @@ static int bes2600_start_ap(struct bes2600_vif *priv)
 
 #ifndef HIDDEN_SSID
 	/* Get SSID */
-	// skb = ieee80211_beacon_get(priv->hw, priv->vif);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)
 	skb = ieee80211_beacon_get(priv->hw, priv->vif, 0);
+#else
+	skb = ieee80211_beacon_get(priv->hw, priv->vif);
+#endif
 	if (WARN_ON(!skb))
 		return -ENOMEM;
 
@@ -1970,9 +1998,11 @@ void bes2600_ht_info_update_work(struct work_struct *work)
                 .what = WSM_UPDATE_IE_BEACON,
                 .count = 1,
         };
-
-        // skb = ieee80211_beacon_get(priv->hw, priv->vif);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,3,0)
 		skb = ieee80211_beacon_get(priv->hw, priv->vif, 0);
+#else
+		skb = ieee80211_beacon_get(priv->hw, priv->vif);
+#endif
 	if (WARN_ON(!skb))
 		return;
 

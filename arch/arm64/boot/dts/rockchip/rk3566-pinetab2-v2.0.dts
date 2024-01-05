@@ -7,7 +7,25 @@
 / {
 	model = "Pine64 PineTab2 v2.0";
 	compatible = "pine64,pinetab2-v2.0", "pine64,pinetab2", "rockchip,rk3566";
+
+	sdio_pwrkey: sdio-pwrkey {
+		compatible = "mmc-pwrseq-simple";
+		clocks = <&rk817 1>;
+		clock-names = "ext_clock";
+		pinctrl-names = "default";
+		pinctrl-0 = <&wifi_pwrkey>;
+		reset-gpios = <&gpio3 RK_PD3 GPIO_ACTIVE_HIGH>;
+		post-power-on-delay-ms = <500>;
+	};
 };
+
+/*
+ * This GPIO is claimed by sdio_pwrkey, it's better to move the power/reset function
+ * to the bootloader instead so that the Linux can use it.
+ */
+//&bes2600 {
+//	power-gpios = <&gpio3 RK_PD3 GPIO_ACTIVE_HIGH>;
+//};
 
 &gpio_keys {
 	pinctrl-0 = <&kb_id_det>, <&hall_int_l>;
@@ -28,19 +46,25 @@
 };
 
 &pinctrl {
-	display {
-		lcd0_rst_l: lcd0-rst-l {
-			rockchip,pins = <0 RK_PC6 RK_FUNC_GPIO &pcfg_pull_none>;
-		};
-	};
-
 	hall {
 		hall_int_l: hall-int-l {
 			rockchip,pins = <0 RK_PA6 RK_FUNC_GPIO &pcfg_pull_none>;
 		};
 	};
+
+	lcd0 {
+		lcd0_rst_l: lcd0-rst-l {
+			rockchip,pins = <0 RK_PC6 RK_FUNC_GPIO &pcfg_pull_none>;
+		};
+	};
+
+	wifi {
+		wifi_pwrkey: wifi-pwrkey {
+			rockchip,pins = <3 RK_PD3 RK_FUNC_GPIO &pcfg_pull_none>;
+		};
+	};
 };
 
-//&w_vbat {
-//	gpio = <&gpio0 RK_PA0 GPIO_ACTIVE_HIGH>;
-//};
+&sdmmc1 {
+	mmc-pwrseq = <&sdio_pwrseq &sdio_pwrkey>;
+};

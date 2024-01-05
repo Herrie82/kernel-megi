@@ -10,7 +10,6 @@
 #include <dt-bindings/reset/rockchip,rk3588-cru.h>
 #include <dt-bindings/phy/phy.h>
 #include <dt-bindings/ata/ahci.h>
-#include <dt-bindings/thermal/thermal.h>
 
 / {
 	compatible = "rockchip,rk3588";
@@ -18,215 +17,6 @@
 	interrupt-parent = <&gic>;
 	#address-cells = <2>;
 	#size-cells = <2>;
-
-	cluster0_opp_table: opp-table-cluster0 {
-		compatible = "operating-points-v2";
-		opp-shared;
-
-		opp-408000000 {
-			opp-hz = /bits/ 64 <408000000>;
-			opp-microvolt = <750000 750000 950000>,
-					<750000 750000 950000>;
-			clock-latency-ns = <40000>;
-			opp-suspend;
-		};
-		opp-600000000 {
-			opp-hz = /bits/ 64 <600000000>;
-			opp-microvolt = <750000 750000 950000>,
-					<750000 750000 950000>;
-			clock-latency-ns = <40000>;
-		};
-		opp-816000000 {
-			opp-hz = /bits/ 64 <816000000>;
-			opp-microvolt = <750000 750000 950000>,
-					<750000 750000 950000>;
-			clock-latency-ns = <40000>;
-		};
-		opp-1008000000 {
-			opp-hz = /bits/ 64 <1008000000>;
-			opp-microvolt = <750000 750000 950000>,
-					<750000 750000 950000>;
-			clock-latency-ns = <40000>;
-		};
-		opp-1200000000 {
-			opp-hz = /bits/ 64 <1200000000>;
-			opp-microvolt = <775000 775000 950000>,
-					<775000 775000 950000>;
-			clock-latency-ns = <40000>;
-		};
-		opp-1416000000 {
-			opp-hz = /bits/ 64 <1416000000>;
-			opp-microvolt = <825000 825000 950000>,
-					<825000 825000 950000>;
-			clock-latency-ns = <40000>;
-		};
-		opp-1608000000 {
-			opp-hz = /bits/ 64 <1608000000>;
-			opp-microvolt = <875000 875000 950000>,
-					<875000 875000 950000>;
-			clock-latency-ns = <40000>;
-		};
-		opp-1800000000 {
-			opp-hz = /bits/ 64 <1800000000>;
-			opp-microvolt = <950000 950000 950000>,
-					<950000 950000 950000>;
-			clock-latency-ns = <40000>;
-		};
-	};
-
-	cluster1_opp_table: opp-table-cluster1 {
-		compatible = "operating-points-v2";
-		opp-shared;
-
-		rockchip,grf = <&bigcore0_grf>;
-		rockchip,volt-mem-read-margin = <
-			855000	1
-			765000	2
-			675000	3
-			495000	4
-		>;
-
-		rockchip,reboot-freq = <1800000000>;
-
-		opp-408000000 {
-			opp-hz = /bits/ 64 <408000000>;
-			opp-microvolt = <600000 600000 1000000>,
-					<675000 675000 1000000>;
-			clock-latency-ns = <40000>;
-			opp-suspend;
-		};
-		opp-600000000 {
-			opp-hz = /bits/ 64 <600000000>;
-			opp-microvolt = <600000 600000 1000000>,
-					<675000 675000 1000000>;
-			clock-latency-ns = <40000>;
-		};
-		opp-816000000 {
-			opp-hz = /bits/ 64 <816000000>;
-			opp-microvolt = <600000 600000 1000000>,
-					<675000 675000 1000000>;
-			clock-latency-ns = <40000>;
-		};
-		opp-1008000000 {
-			opp-hz = /bits/ 64 <1008000000>;
-			opp-microvolt = <625000 625000 1000000>,
-					<675000 675000 1000000>;
-			clock-latency-ns = <40000>;
-		};
-		opp-1200000000 {
-			opp-hz = /bits/ 64 <1200000000>;
-			opp-microvolt = <650000 650000 1000000>,
-					<675000 675000 1000000>;
-			clock-latency-ns = <40000>;
-		};
-		opp-1416000000 {
-			opp-hz = /bits/ 64 <1416000000>;
-			opp-microvolt = <675000 675000 1000000>,
-					<675000 675000 1000000>;
-			clock-latency-ns = <40000>;
-		};
-		opp-1608000000 {
-			opp-hz = /bits/ 64 <1608000000>;
-			opp-microvolt = <700000 700000 1000000>,
-					<700000 700000 1000000>;
-			clock-latency-ns = <40000>;
-		};
-		opp-1800000000 {
-			opp-hz = /bits/ 64 <1800000000>;
-			opp-microvolt = <775000 775000 1000000>,
-					<775000 775000 1000000>;
-			clock-latency-ns = <40000>;
-		};
-		opp-2016000000 {
-			opp-hz = /bits/ 64 <2016000000>;
-			opp-microvolt = <850000 850000 1000000>,
-					<850000 850000 1000000>;
-			clock-latency-ns = <40000>;
-		};
-		opp-2208000000 {
-			opp-hz = /bits/ 64 <2208000000>;
-			opp-microvolt = <925000 925000 1000000>,
-					<925000 925000 1000000>;
-			clock-latency-ns = <40000>;
-		};
-	};
-
-	cluster2_opp_table: opp-table-cluster2 {
-		compatible = "operating-points-v2";
-		opp-shared;
-
-		rockchip,grf = <&bigcore1_grf>;
-		rockchip,volt-mem-read-margin = <
-			855000	1
-			765000	2
-			675000	3
-			495000	4
-		>;
-
-		rockchip,reboot-freq = <1800000000>;
-
-		opp-408000000 {
-			opp-hz = /bits/ 64 <408000000>;
-			opp-microvolt = <600000 600000 1000000>,
-					<675000 675000 1000000>;
-			clock-latency-ns = <40000>;
-			opp-suspend;
-		};
-		opp-600000000 {
-			opp-hz = /bits/ 64 <600000000>;
-			opp-microvolt = <600000 600000 1000000>,
-					<675000 675000 1000000>;
-			clock-latency-ns = <40000>;
-		};
-		opp-816000000 {
-			opp-hz = /bits/ 64 <816000000>;
-			opp-microvolt = <600000 600000 1000000>,
-					<675000 675000 1000000>;
-			clock-latency-ns = <40000>;
-		};
-		opp-1008000000 {
-			opp-hz = /bits/ 64 <1008000000>;
-			opp-microvolt = <625000 625000 1000000>,
-					<675000 675000 1000000>;
-			clock-latency-ns = <40000>;
-		};
-		opp-1200000000 {
-			opp-hz = /bits/ 64 <1200000000>;
-			opp-microvolt = <650000 650000 1000000>,
-					<675000 675000 1000000>;
-			clock-latency-ns = <40000>;
-		};
-		opp-1416000000 {
-			opp-hz = /bits/ 64 <1416000000>;
-			opp-microvolt = <675000 675000 1000000>,
-					<675000 675000 1000000>;
-			clock-latency-ns = <40000>;
-		};
-		opp-1608000000 {
-			opp-hz = /bits/ 64 <1608000000>;
-			opp-microvolt = <700000 700000 1000000>,
-					<700000 700000 1000000>;
-			clock-latency-ns = <40000>;
-		};
-		opp-1800000000 {
-			opp-hz = /bits/ 64 <1800000000>;
-			opp-microvolt = <775000 775000 1000000>,
-					<775000 775000 1000000>;
-			clock-latency-ns = <40000>;
-		};
-		opp-2016000000 {
-			opp-hz = /bits/ 64 <2016000000>;
-			opp-microvolt = <850000 850000 1000000>,
-					<850000 850000 1000000>;
-			clock-latency-ns = <40000>;
-		};
-		opp-2208000000 {
-			opp-hz = /bits/ 64 <2208000000>;
-			opp-microvolt = <925000 925000 1000000>,
-					<925000 925000 1000000>;
-			clock-latency-ns = <40000>;
-		};
-	};
 
 	cpus {
 		#address-cells = <1>;
@@ -274,7 +64,6 @@
 			clocks = <&scmi_clk SCMI_CLK_CPUL>;
 			assigned-clocks = <&scmi_clk SCMI_CLK_CPUL>;
 			assigned-clock-rates = <816000000>;
-			operating-points-v2 = <&cluster0_opp_table>;
 			cpu-idle-states = <&CPU_SLEEP>;
 			i-cache-size = <32768>;
 			i-cache-line-size = <64>;
@@ -294,7 +83,6 @@
 			enable-method = "psci";
 			capacity-dmips-mhz = <530>;
 			clocks = <&scmi_clk SCMI_CLK_CPUL>;
-			operating-points-v2 = <&cluster0_opp_table>;
 			cpu-idle-states = <&CPU_SLEEP>;
 			i-cache-size = <32768>;
 			i-cache-line-size = <64>;
@@ -314,7 +102,6 @@
 			enable-method = "psci";
 			capacity-dmips-mhz = <530>;
 			clocks = <&scmi_clk SCMI_CLK_CPUL>;
-			operating-points-v2 = <&cluster0_opp_table>;
 			cpu-idle-states = <&CPU_SLEEP>;
 			i-cache-size = <32768>;
 			i-cache-line-size = <64>;
@@ -334,7 +121,6 @@
 			enable-method = "psci";
 			capacity-dmips-mhz = <530>;
 			clocks = <&scmi_clk SCMI_CLK_CPUL>;
-			operating-points-v2 = <&cluster0_opp_table>;
 			cpu-idle-states = <&CPU_SLEEP>;
 			i-cache-size = <32768>;
 			i-cache-line-size = <64>;
@@ -356,7 +142,6 @@
 			clocks = <&scmi_clk SCMI_CLK_CPUB01>;
 			assigned-clocks = <&scmi_clk SCMI_CLK_CPUB01>;
 			assigned-clock-rates = <816000000>;
-			operating-points-v2 = <&cluster1_opp_table>;
 			cpu-idle-states = <&CPU_SLEEP>;
 			i-cache-size = <65536>;
 			i-cache-line-size = <64>;
@@ -376,7 +161,6 @@
 			enable-method = "psci";
 			capacity-dmips-mhz = <1024>;
 			clocks = <&scmi_clk SCMI_CLK_CPUB01>;
-			operating-points-v2 = <&cluster1_opp_table>;
 			cpu-idle-states = <&CPU_SLEEP>;
 			i-cache-size = <65536>;
 			i-cache-line-size = <64>;
@@ -398,7 +182,6 @@
 			clocks = <&scmi_clk SCMI_CLK_CPUB23>;
 			assigned-clocks = <&scmi_clk SCMI_CLK_CPUB23>;
 			assigned-clock-rates = <816000000>;
-			operating-points-v2 = <&cluster2_opp_table>;
 			cpu-idle-states = <&CPU_SLEEP>;
 			i-cache-size = <65536>;
 			i-cache-line-size = <64>;
@@ -418,7 +201,6 @@
 			enable-method = "psci";
 			capacity-dmips-mhz = <1024>;
 			clocks = <&scmi_clk SCMI_CLK_CPUB23>;
-			operating-points-v2 = <&cluster2_opp_table>;
 			cpu-idle-states = <&CPU_SLEEP>;
 			i-cache-size = <65536>;
 			i-cache-line-size = <64>;
@@ -580,230 +362,6 @@
 		#clock-cells = <0>;
 	};
 
-	thermal_zones: thermal-zones {
-		soc_thermal: soc-thermal {
-			polling-delay-passive = <20>; /* milliseconds */
-			polling-delay = <1000>; /* milliseconds */
-			sustainable-power = <2100>; /* milliwatts */
-
-			thermal-sensors = <&tsadc 0>;
-			trips {
-				trip-point-0 {
-					temperature = <75000>;
-					hysteresis = <2000>;
-					type = "passive";
-				};
-				soc_target: trip-point-1 {
-					temperature = <85000>;
-					hysteresis = <2000>;
-					type = "passive";
-				};
-				trip-point-2 {
-					/* millicelsius */
-					temperature = <115000>;
-					/* millicelsius */
-					hysteresis = <2000>;
-					type = "critical";
-				};
-			};
-
-			cooling-maps {
-				map0 {
-					trip = <&soc_target>;
-					cooling-device = <&cpu_l0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
-							 <&cpu_l1 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
-							 <&cpu_l2 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
-							 <&cpu_l3 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
-							 <&cpu_b0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
-							 <&cpu_b1 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
-							 <&cpu_b2 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
-							 <&cpu_b3 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
-					contribution = <1024>;
-				};
-			};
-		};
-
-		bigcore0_thermal: bigcore0-thermal {
-			polling-delay-passive = <20>; /* milliseconds */
-			polling-delay = <1000>; /* milliseconds */
-			thermal-sensors = <&tsadc 1>;
-
-			trips {
-				trip-point-0 {
-					temperature = <75000>;
-					hysteresis = <2000>;
-					type = "passive";
-				};
-				b0_target: trip-point-1 {
-					temperature = <85000>;
-					hysteresis = <2000>;
-					type = "passive";
-				};
-				trip-point-2 {
-					/* millicelsius */
-					temperature = <115000>;
-					/* millicelsius */
-					hysteresis = <2000>;
-					type = "critical";
-				};
-			};
-
-			cooling-maps {
-				map0 {
-					trip = <&b0_target>;
-					cooling-device = <&cpu_b0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
-							 <&cpu_b1 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
-					contribution = <1024>;
-				};
-			};
-		};
-
-		bigcore1_thermal: bigcore1-thermal {
-			polling-delay-passive = <20>; /* milliseconds */
-			polling-delay = <1000>; /* milliseconds */
-			thermal-sensors = <&tsadc 2>;
-			trips {
-				trip-point-0 {
-					temperature = <75000>;
-					hysteresis = <2000>;
-					type = "passive";
-				};
-				b1_target: trip-point-1 {
-					temperature = <85000>;
-					hysteresis = <2000>;
-					type = "passive";
-				};
-				trip-point-2 {
-					/* millicelsius */
-					temperature = <115000>;
-					/* millicelsius */
-					hysteresis = <2000>;
-					type = "critical";
-				};
-			};
-
-			cooling-maps {
-				map0 {
-					trip = <&b1_target>;
-					cooling-device = <&cpu_b2 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
-							 <&cpu_b3 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
-					contribution = <1024>;
-				};
-			};
-		};
-
-		little_core_thermal: littlecore-thermal {
-			polling-delay-passive = <20>; /* milliseconds */
-			polling-delay = <1000>; /* milliseconds */
-			thermal-sensors = <&tsadc 3>;
-			trips {
-				trip-point-0 {
-					temperature = <75000>;
-					hysteresis = <2000>;
-					type = "passive";
-				};
-				l0_target: trip-point-1 {
-					temperature = <85000>;
-					hysteresis = <2000>;
-					type = "passive";
-				};
-				trip-point-2 {
-					/* millicelsius */
-					temperature = <115000>;
-					/* millicelsius */
-					hysteresis = <2000>;
-					type = "critical";
-				};
-			};
-
-			cooling-maps {
-				map0 {
-					trip = <&l0_target>;
-					cooling-device = <&cpu_l0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
-							 <&cpu_l1 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
-							 <&cpu_l2 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
-							 <&cpu_l3 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
-					contribution = <1024>;
-				};
-			};
-		};
-
-		center_thermal: center-thermal {
-			polling-delay-passive = <20>; /* milliseconds */
-			polling-delay = <1000>; /* milliseconds */
-			thermal-sensors = <&tsadc 4>;
-			trips {
-				trip-point-0 {
-					temperature = <75000>;
-					hysteresis = <2000>;
-					type = "passive";
-				};
-				trip-point-1 {
-					temperature = <85000>;
-					hysteresis = <2000>;
-					type = "passive";
-				};
-				trip-point-2 {
-					/* millicelsius */
-					temperature = <115000>;
-					/* millicelsius */
-					hysteresis = <2000>;
-					type = "critical";
-				};
-			};
-		};
-
-		gpu_thermal: gpu-thermal {
-			polling-delay-passive = <20>; /* milliseconds */
-			polling-delay = <1000>; /* milliseconds */
-			thermal-sensors = <&tsadc 5>;
-			trips {
-				trip-point-0 {
-					temperature = <75000>;
-					hysteresis = <2000>;
-					type = "passive";
-				};
-				trip-point-1 {
-					temperature = <85000>;
-					hysteresis = <2000>;
-					type = "passive";
-				};
-				trip-point-2 {
-					/* millicelsius */
-					temperature = <115000>;
-					/* millicelsius */
-					hysteresis = <2000>;
-					type = "critical";
-				};
-			};
-		};
-
-		npu_thermal: npu-thermal {
-			polling-delay-passive = <20>; /* milliseconds */
-			polling-delay = <1000>; /* milliseconds */
-			thermal-sensors = <&tsadc 6>;
-			trips {
-				trip-point-0 {
-					temperature = <75000>;
-					hysteresis = <2000>;
-					type = "passive";
-				};
-				trip-point-1 {
-					temperature = <85000>;
-					hysteresis = <2000>;
-					type = "passive";
-				};
-				trip-point-2 {
-					/* millicelsius */
-					temperature = <115000>;
-					/* millicelsius */
-					hysteresis = <2000>;
-					type = "critical";
-				};
-			};
-		};
-	};
-
 	timer {
 		compatible = "arm,armv8-timer";
 		interrupts = <GIC_PPI 13 IRQ_TYPE_LEVEL_HIGH 0>,
@@ -838,36 +396,6 @@
 		scmi_shmem: sram@0 {
 			compatible = "arm,scmi-shmem";
 			reg = <0x0 0x100>;
-		};
-	};
-
-	usbdrd3_0: usb@fc000000 {
-		compatible = "rockchip,rk3588-dwc3-otg", "rockchip,rk3399-dwc3";
-		clocks = <&cru REF_CLK_USB3OTG0>, <&cru SUSPEND_CLK_USB3OTG0>,
-			 <&cru ACLK_USB3OTG0>;
-		clock-names = "ref", "suspend", "bus";
-		ranges;
-		resets = <&cru SRST_A_USB3OTG0>;
-		reset-names = "usb3-otg";
-		#address-cells = <2>;
-		#size-cells = <2>;
-		status = "disabled";
-
-		usbdrd_dwc3_0: usb@fc000000 {
-			compatible = "snps,dwc3";
-			reg = <0x0 0xfc000000 0x0 0x400000>;
-			interrupts = <GIC_SPI 220 IRQ_TYPE_LEVEL_HIGH 0>;
-			power-domains = <&power RK3588_PD_USB>;
-			dr_mode = "otg";
-			phys = <&u2phy0_otg>, <&usbdp_phy0_u3>;
-			phy-names = "usb2-phy", "usb3-phy";
-			phy_type = "utmi_wide";
-			snps,dis_enblslpm_quirk;
-			snps,dis-u1-entry-quirk;
-			snps,dis-u2-entry-quirk;
-			snps,dis-u2-freeclk-exists-quirk;
-			snps,dis-del-phy-power-chg-quirk;
-			snps,dis-tx-ipgap-linecheck-quirk;
 		};
 	};
 
@@ -915,48 +443,9 @@
 		status = "disabled";
 	};
 
-	usbhost3_0: usb@fcd00000 {
-		compatible = "rockchip,rk3588-dwc3-host", "rockchip,rk3399-dwc3";
-		clocks = <&cru REF_CLK_USB3OTG2>, <&cru SUSPEND_CLK_USB3OTG2>,
-			 <&cru ACLK_USB3OTG2>, <&cru CLK_UTMI_OTG2>,
-			 <&cru PCLK_PHP_ROOT>, <&cru CLK_PIPEPHY2_PIPE_U3_G>;
-		clock-names = "ref", "suspend", "bus", "utmi", "php", "pipe";
-		ranges;
-		resets = <&cru SRST_A_USB3OTG2>;
-		reset-names = "usb3-host";
-		#address-cells = <2>;
-		#size-cells = <2>;
-		status = "disabled";
-
-		usbhost_dwc3_0: usb@fcd00000 {
-			compatible = "snps,dwc3";
-			reg = <0x0 0xfcd00000 0x0 0x400000>;
-			interrupts = <GIC_SPI 222 IRQ_TYPE_LEVEL_HIGH 0>;
-			dr_mode = "host";
-			phys = <&combphy2_psu PHY_TYPE_USB3>;
-			phy-names = "usb3-phy";
-			phy_type = "utmi_wide";
-			snps,dis_enblslpm_quirk;
-			snps,dis-u2-freeclk-exists-quirk;
-			snps,dis-del-phy-power-chg-quirk;
-			snps,dis-tx-ipgap-linecheck-quirk;
-			snps,dis_rxdet_inp3_quirk;
-		};
-	};
-
 	sys_grf: syscon@fd58c000 {
 		compatible = "rockchip,rk3588-sys-grf", "syscon";
 		reg = <0x0 0xfd58c000 0x0 0x1000>;
-	};
-
-	bigcore0_grf: syscon@fd590000 {
-		compatible = "rockchip,rk3588-bigcore0-grf", "syscon";
-		reg = <0x0 0xfd590000 0x0 0x100>;
-	};
-
-	bigcore1_grf: syscon@fd592000 {
-		compatible = "rockchip,rk3588-bigcore1-grf", "syscon";
-		reg = <0x0 0xfd592000 0x0 0x100>;
 	};
 
 	php_grf: syscon@fd5b0000 {
@@ -972,37 +461,6 @@
 	pipe_phy2_grf: syscon@fd5c4000 {
 		compatible = "rockchip,rk3588-pipe-phy-grf", "syscon";
 		reg = <0x0 0xfd5c4000 0x0 0x100>;
-	};
-
-	usbdpphy0_grf: syscon@fd5c8000 {
-		compatible = "rockchip,rk3588-usbdpphy-grf", "syscon";
-		reg = <0x0 0xfd5c8000 0x0 0x4000>;
-	};
-
-	usb2phy0_grf: syscon@fd5d0000 {
-		compatible = "rockchip,rk3588-usb2phy-grf", "syscon",
-			     "simple-mfd";
-		reg = <0x0 0xfd5d0000 0x0 0x4000>;
-		#address-cells = <1>;
-		#size-cells = <1>;
-
-		u2phy0: usb2-phy@0 {
-			compatible = "rockchip,rk3588-usb2phy";
-			reg = <0x0 0x10>;
-			interrupts = <GIC_SPI 393 IRQ_TYPE_LEVEL_HIGH 0>;
-			resets = <&cru SRST_OTGPHY_U3_0>, <&cru SRST_P_USB2PHY_U3_0_GRF0>;
-			reset-names = "phy", "apb";
-			clocks = <&cru CLK_USB2PHY_HDPTXRXPHY_REF>;
-			clock-names = "phyclk";
-			clock-output-names = "usb480m_phy0";
-			#clock-cells = <0>;
-			status = "disabled";
-
-			u2phy0_otg: otg-port {
-				#phy-cells = <0>;
-				status = "disabled";
-			};
-		};
 	};
 
 	usb2phy2_grf: syscon@fd5d8000 {
@@ -1028,17 +486,6 @@
 				status = "disabled";
 			};
 		};
-	};
-
-	vo0_grf: syscon@fd5a6000 {
-		compatible = "rockchip,rk3588-vo-grf", "syscon";
-		reg = <0x0 0xfd5a6000 0x0 0x2000>;
-		clocks = <&cru PCLK_VO0GRF>;
-	};
-
-	usb_grf: syscon@fd5ac000 {
-		compatible = "rockchip,rk3588-usb-grf", "syscon";
-		reg = <0x0 0xfd5ac000 0x0 0x4000>;
 	};
 
 	usb2phy3_grf: syscon@fd5dc000 {
@@ -1782,8 +1229,6 @@
 
 	pcie2x1l1: pcie@fe180000 {
 		compatible = "rockchip,rk3588-pcie", "rockchip,rk3568-pcie";
-		#address-cells = <3>;
-		#size-cells = <2>;
 		bus-range = <0x30 0x3f>;
 		clocks = <&cru ACLK_PCIE_1L1_MSTR>, <&cru ACLK_PCIE_1L1_SLV>,
 			 <&cru ACLK_PCIE_1L1_DBI>, <&cru PCLK_PCIE_1L1>,
@@ -1820,6 +1265,8 @@
 		reg-names = "dbi", "apb", "config";
 		resets = <&cru SRST_PCIE3_POWER_UP>, <&cru SRST_P_PCIE3>;
 		reset-names = "pwr", "pipe";
+		#address-cells = <3>;
+		#size-cells = <2>;
 		status = "disabled";
 
 		pcie2x1l1_intc: legacy-interrupt-controller {
@@ -1833,8 +1280,6 @@
 
 	pcie2x1l2: pcie@fe190000 {
 		compatible = "rockchip,rk3588-pcie", "rockchip,rk3568-pcie";
-		#address-cells = <3>;
-		#size-cells = <2>;
 		bus-range = <0x40 0x4f>;
 		clocks = <&cru ACLK_PCIE_1L2_MSTR>, <&cru ACLK_PCIE_1L2_SLV>,
 			 <&cru ACLK_PCIE_1L2_DBI>, <&cru PCLK_PCIE_1L2>,
@@ -1871,6 +1316,8 @@
 		reg-names = "dbi", "apb", "config";
 		resets = <&cru SRST_PCIE4_POWER_UP>, <&cru SRST_P_PCIE4>;
 		reset-names = "pwr", "pipe";
+		#address-cells = <3>;
+		#size-cells = <2>;
 		status = "disabled";
 
 		pcie2x1l2_intc: legacy-interrupt-controller {
@@ -2025,17 +1472,6 @@
 			 <&cru SRST_A_EMMC>, <&cru SRST_B_EMMC>,
 			 <&cru SRST_T_EMMC>;
 		reset-names = "core", "bus", "axi", "block", "timer";
-		status = "disabled";
-	};
-
-	sfc: spi@fe2b0000 {
-		compatible = "rockchip,sfc";
-		reg = <0x0 0xfe2b0000 0x0 0x4000>;
-		interrupts = <GIC_SPI 206 IRQ_TYPE_LEVEL_HIGH 0>;
-		clocks = <&cru SCLK_SFC>, <&cru HCLK_SFC>;
-		clock-names = "clk_sfc", "hclk_sfc";
-		assigned-clocks = <&cru SCLK_SFC>;
-		assigned-clock-rates = <100000000>;
 		status = "disabled";
 	};
 
@@ -2759,37 +2195,6 @@
 		clocks = <&cru ACLK_DMAC2>;
 		clock-names = "apb_pclk";
 		#dma-cells = <1>;
-	};
-
-	usbdp_phy0: phy@fed80000 {
-		compatible = "rockchip,rk3588-usbdp-phy";
-		reg = <0x0 0xfed80000 0x0 0x10000>;
-		rockchip,u2phy-grf = <&usb2phy0_grf>;
-		rockchip,usb-grf = <&usb_grf>;
-		rockchip,usbdpphy-grf = <&usbdpphy0_grf>;
-		rockchip,vo-grf = <&vo0_grf>;
-		clocks = <&cru CLK_USBDPPHY_MIPIDCPPHY_REF>,
-			 <&cru CLK_USBDP_PHY0_IMMORTAL>,
-			 <&cru PCLK_USBDPPHY0>,
-			 <&u2phy0>;
-		clock-names = "refclk", "immortal", "pclk", "utmi";
-		resets = <&cru SRST_USBDP_COMBO_PHY0_INIT>,
-			 <&cru SRST_USBDP_COMBO_PHY0_CMN>,
-			 <&cru SRST_USBDP_COMBO_PHY0_LANE>,
-			 <&cru SRST_USBDP_COMBO_PHY0_PCS>,
-			 <&cru SRST_P_USBDPPHY0>;
-		reset-names = "init", "cmn", "lane", "pcs_apb", "pma_apb";
-		status = "disabled";
-
-		usbdp_phy0_dp: dp-port {
-			#phy-cells = <0>;
-			status = "disabled";
-		};
-
-		usbdp_phy0_u3: usb3-port {
-			#phy-cells = <0>;
-			status = "disabled";
-		};
 	};
 
 	combphy0_ps: phy@fee00000 {

@@ -41,8 +41,7 @@ enum bus_probe_state {
 	BES2600_BUS_PROBE_TIMEOUT,
 };
 
-struct bes_cdev
-{
+struct bes_cdev {
 	struct cdev cdev;
 	dev_t dev_id;
 	int major;
@@ -83,11 +82,10 @@ struct bes_cdev
 #endif
 };
 
-struct bes2600_op_map
-{
+struct bes2600_op_map {
 	char op[20];	// operation
 	int op_len;	// operation length, used for effiency
-	int (*handler) (const char *cmd); // handler
+	int (*handler)(const char *cmd); // handler
 };
 
 static struct bes_cdev bes2600_cdev;
@@ -117,26 +115,26 @@ static int bes2600_chrdev_switch_subsys(int wake_flag, int subsys, bool active)
 {
 	int ret = 0;
 
-	if(bes2600_cdev.sbus_priv == NULL)
+	if (bes2600_cdev.sbus_priv == NULL)
 		return -EFAULT;
 
-	if(active) {
-		if(bes2600_cdev.sbus_ops->gpio_wake)
+	if (active) {
+		if (bes2600_cdev.sbus_ops->gpio_wake)
 			bes2600_cdev.sbus_ops->gpio_wake(bes2600_cdev.sbus_priv, wake_flag);
 
-		if(bes2600_cdev.sbus_ops->sbus_active)
+		if (bes2600_cdev.sbus_ops->sbus_active)
 			ret = bes2600_cdev.sbus_ops->sbus_active(bes2600_cdev.sbus_priv, subsys);
 
-		if(bes2600_cdev.sbus_ops->gpio_sleep)
+		if (bes2600_cdev.sbus_ops->gpio_sleep)
 			bes2600_cdev.sbus_ops->gpio_sleep(bes2600_cdev.sbus_priv, wake_flag);
 	} else {
-		if(bes2600_cdev.sbus_ops->gpio_wake)
+		if (bes2600_cdev.sbus_ops->gpio_wake)
 			bes2600_cdev.sbus_ops->gpio_wake(bes2600_cdev.sbus_priv, wake_flag);
 
-		if(bes2600_cdev.sbus_ops->sbus_deactive)
+		if (bes2600_cdev.sbus_ops->sbus_deactive)
 			ret = bes2600_cdev.sbus_ops->sbus_deactive(bes2600_cdev.sbus_priv, subsys);
 
-		if(bes2600_cdev.sbus_ops->gpio_sleep)
+		if (bes2600_cdev.sbus_ops->gpio_sleep)
 			bes2600_cdev.sbus_ops->gpio_sleep(bes2600_cdev.sbus_priv, wake_flag);
 	}
 
@@ -148,11 +146,11 @@ static int bes2600_switch_wifi(bool on)
 	int ret = 0;
 	long status = 0;
 
-	if(bes2600_cdev.wifi_opened == on)
+	if (bes2600_cdev.wifi_opened == on)
 		return 0;
 
-	if(on) {
-		if(bes2600_chrdev_check_system_close()) {
+	if (on) {
+		if (bes2600_chrdev_check_system_close()) {
 			bes2600_info(BES2600_DBG_CHARDEV, "power up bes2600 when active wifi.\n");
 			/* reset bus error status when restart bes2600 */
 			spin_lock(&bes2600_cdev.status_lock);
@@ -166,14 +164,14 @@ static int bes2600_switch_wifi(bool on)
 			bes2600_cdev.sbus_ops->power_switch(NULL, 1);
 
 			/* wait probe done event */
-			status = wait_event_timeout(bes2600_cdev.probe_done_wq, 
+			status = wait_event_timeout(bes2600_cdev.probe_done_wq,
 					bes2600_bootup_end(), HZ * 8);
 			WARN_ON(status <= 0);
 			ret = (status <= 0 || bes2600_chrdev_is_bus_error()) ? -1 : 0;
 		} else {
 			/* bes2600 is already powered up, we just need to create net device */
-			if(bes2600_cdev.sbus_priv) {
-				if(!bes2600_is_net_dev_created(bes2600_cdev.sbus_priv)) {
+			if (bes2600_cdev.sbus_priv) {
+				if (!bes2600_is_net_dev_created(bes2600_cdev.sbus_priv)) {
 					ret = bes2600_register_net_dev(bes2600_cdev.sbus_priv);
 				}
 			} else {
@@ -181,12 +179,12 @@ static int bes2600_switch_wifi(bool on)
 			}
 		}
 	} else {
-		if(bes2600_cdev.sbus_priv && bes2600_is_net_dev_created(bes2600_cdev.sbus_priv)) {
+		if (bes2600_cdev.sbus_priv && bes2600_is_net_dev_created(bes2600_cdev.sbus_priv)) {
 			bes2600_unregister_net_dev(bes2600_cdev.sbus_priv);
 		}
 	}
 
-	if(!ret) {
+	if (!ret) {
 		bes2600_cdev.wifi_opened = on;
 	} else {
 		bes2600_cdev.wifi_opened = false;
@@ -201,11 +199,11 @@ static int bes2600_switch_bt(bool on)
 	int ret = 0;
 	long status = 0;
 
-	if(bes2600_cdev.bt_opened == on)
+	if (bes2600_cdev.bt_opened == on)
 		return 0;
 
-	if(on) {
-		if(bes2600_chrdev_check_system_close()) {
+	if (on) {
+		if (bes2600_chrdev_check_system_close()) {
 			bes2600_info(BES2600_DBG_CHARDEV, "power up bes2600 when active bt.\n");
 			/* reset bus error status when restart bes2600 */
 			spin_lock(&bes2600_cdev.status_lock);
@@ -237,7 +235,7 @@ static int bes2600_switch_bt(bool on)
 		bes2600_chrdev_switch_subsys(GPIO_WAKE_FLAG_BT_OFF, SUBSYSTEM_BT, false);
 	}
 
-	if(!ret) {
+	if (!ret) {
 		bes2600_cdev.bt_opened = on;
 	} else {
 		bes2600_cdev.bt_opened = false;
@@ -257,17 +255,17 @@ static int bes2600_get_cmd_and_ifname(const char *str, char **result)
 	char *cmd_ptr = NULL;
 
 	/* check if input arguments is valid */
-	if(!str || strncmp(str, "ifname:", 7) != 0)
+	if (!str || strncmp(str, "ifname:", 7) != 0)
 		return -1;
 
 	sp = strchr(str, ' ');
-	if(strncmp(sp + 1, "cmd:", 4) != 0)
+	if (strncmp(sp + 1, "cmd:", 4) != 0)
 		return -1;
 
 	/* extract interface name */
 	ifname_len = sp - str - 7;
 	tmp_ptr = kmalloc(ifname_len + 1, GFP_KERNEL);
-	if(!tmp_ptr) {
+	if (!tmp_ptr) {
 		return -2;
 	}
 
@@ -279,9 +277,9 @@ static int bes2600_get_cmd_and_ifname(const char *str, char **result)
 	cmd_ptr = strstr(str, "cmd:");
 	cmd_ptr += 4;
 	sp = strchr(cmd_ptr, ' ');
-	if(!sp) {	/* the command don't have any parameter */
+	if (!sp) {	/* the command don't have any parameter */
 		cmd_len = strlen(cmd_ptr);
-		if(cmd_ptr[cmd_len - 1] == '\n')
+		if (cmd_ptr[cmd_len - 1] == '\n')
 			--cmd_len;
 	} else {	/* the command have one or more parameter */
 		cmd_len = sp - cmd_ptr;
@@ -289,7 +287,7 @@ static int bes2600_get_cmd_and_ifname(const char *str, char **result)
 
 	/* copy command to out buffer */
 	tmp_ptr = kmalloc( cmd_len + 1, GFP_KERNEL);
-	if(!tmp_ptr) {
+	if (!tmp_ptr) {
 		kfree(result[0]);
 		result[0] = NULL;
 		return -3;
@@ -304,12 +302,12 @@ static int bes2600_get_cmd_and_ifname(const char *str, char **result)
 
 static void bes2600_recyle_cmd_and_ifname_mem(char **info)
 {
-	if(info[0]) {
+	if (info[0]) {
 		kfree(info[0]);
 		info[0] = NULL;
 	}
 
-	if(info[1]) {
+	if (info[1]) {
 		kfree(info[1]);
 		info[1] = NULL;
 	}
@@ -320,7 +318,7 @@ static int bes2600_op_default_handler(const char *str)
 {
 	char *info[2] = {0};
 
-	if(bes2600_get_cmd_and_ifname(str, info) == 0) {
+	if (bes2600_get_cmd_and_ifname(str, info) == 0) {
 		bes2600_info(BES2600_DBG_CHARDEV, "cmd(%s) on %s not handled\n", info[1], info[0]);
 	} else {
 		bes2600_err(BES2600_DBG_CHARDEV, "%s get command fail, the origin string is %s\n", __func__, str);
@@ -345,11 +343,11 @@ static int bes2600_op_wifi_bt_on_off(const char *str)
 	spin_unlock(&bes2600_cdev.status_lock);
 
 	/* only work for wifi signal mode */
-	if(bes2600_cdev.fw_type != BES2600_FW_TYPE_WIFI_SIGNAL)
+	if (bes2600_cdev.fw_type != BES2600_FW_TYPE_WIFI_SIGNAL)
 		return -EFAULT;
 
 	/* wait bus probe operation end */
-	if(probe_state == BES2600_BUS_PROBE_START) {
+	if (probe_state == BES2600_BUS_PROBE_START) {
 		bes2600_info(BES2600_DBG_CHARDEV, "wait bus probe operation end\n");
 		status = wait_event_timeout(bes2600_cdev.probe_done_wq,
 					(bes2600_cdev.bus_probe > BES2600_BUS_PROBE_START),
@@ -358,7 +356,7 @@ static int bes2600_op_wifi_bt_on_off(const char *str)
 	}
 
 	/* must wait previous operation end in critical section */
-	if(wait_state != BES2600_BOOT_WAIT_NONE) {
+	if (wait_state != BES2600_BOOT_WAIT_NONE) {
 		bes2600_info(BES2600_DBG_CHARDEV, "wait previous operation end\n");
 		status = wait_event_timeout(bes2600_cdev.probe_done_wq,
 					(bes2600_cdev.wait_state == BES2600_BOOT_WAIT_NONE),
@@ -368,16 +366,16 @@ static int bes2600_op_wifi_bt_on_off(const char *str)
 
 	/* if dpd calibration is doing, modify wifi and bt state directly */
 	spin_lock(&bes2600_cdev.status_lock);
-	if(bes2600_cdev.bus_probe == BES2600_BUS_PROBE_OK && !bes2600_cdev.dpd_calied) {
-		if(bes2600_get_cmd_and_ifname(str, info) == 0) {
-			if(strncmp(info[1], "WIFI_ON", 7) == 0) {
+	if (bes2600_cdev.bus_probe == BES2600_BUS_PROBE_OK && !bes2600_cdev.dpd_calied) {
+		if (bes2600_get_cmd_and_ifname(str, info) == 0) {
+			if (strncmp(info[1], "WIFI_ON", 7) == 0) {
 				bes2600_cdev.wifi_opened = true;
-			} else if(strncmp(info[1], "WIFI_OFF", 8) == 0) {
+			} else if (strncmp(info[1], "WIFI_OFF", 8) == 0) {
 				bes2600_cdev.wifi_opened = false;
-			} else if(strncmp(info[1], "BT_ON", 5) == 0) {
+			} else if (strncmp(info[1], "BT_ON", 5) == 0) {
 				bes2600_cdev.bt_opened = true;
 				bes2600_cdev.bton_pending = true;
-			} else if(strncmp(info[1], "BT_OFF", 6) == 0) {
+			} else if (strncmp(info[1], "BT_OFF", 6) == 0) {
 				bes2600_cdev.bt_opened = false;
 				bes2600_cdev.bton_pending = false;
 			}
@@ -395,19 +393,19 @@ static int bes2600_op_wifi_bt_on_off(const char *str)
 	spin_unlock(&bes2600_cdev.status_lock);
 
 	/* process wifi/bt on/off operation */
-	if(bes2600_get_cmd_and_ifname(str, info) == 0) {
-		if(strncmp(info[1], "WIFI_ON", 7) == 0) {
+	if (bes2600_get_cmd_and_ifname(str, info) == 0) {
+		if (strncmp(info[1], "WIFI_ON", 7) == 0) {
 			ret = bes2600_switch_wifi(1);
-		} else if(strncmp(info[1], "WIFI_OFF", 8) == 0) {
+		} else if (strncmp(info[1], "WIFI_OFF", 8) == 0) {
 			ret = bes2600_switch_wifi(0);
-		} else if(strncmp(info[1], "BT_ON", 5) == 0) {
+		} else if (strncmp(info[1], "BT_ON", 5) == 0) {
 			ret = bes2600_switch_bt(1);
-		} else if(strncmp(info[1], "BT_OFF", 6) == 0) {
+		} else if (strncmp(info[1], "BT_OFF", 6) == 0) {
 			ret = bes2600_switch_bt(0);
 		}
 	}
 
-	if(!ret && bes2600_chrdev_check_system_close())
+	if (!ret && bes2600_chrdev_check_system_close())
 		ret = bes2600_chrdev_do_system_close(bes2600_cdev.sbus_ops,
 						bes2600_cdev.sbus_priv);
 
@@ -428,9 +426,12 @@ static int bes2600_op_change_fw_type(const char *str)
 
 	bes2600_dbg(BES2600_DBG_CHARDEV, "%s is called, arg:%s\n", __func__, str);
 
+	if (!bes2600_cdev.sbus_ops->power_switch && !bes2600_cdev.sbus_ops->reboot)
+		return -EPERM;
+
 	/* check if user input is valid */
 	cmd_ptr = strstr(str, "CHANGE_FW_TYPE ");
-	if(strlen(str) < 16 || !cmd_ptr) {
+	if (strlen(str) < 16 || !cmd_ptr) {
 		bes2600_err(BES2600_DBG_CHARDEV, "the format of \"%s\" is error\n", str);
 		return -EINVAL;
 	}
@@ -439,19 +440,19 @@ static int bes2600_op_change_fw_type(const char *str)
 	strncpy(fw_type, cmd_ptr + 14, 4);
 	fw_type[0] = '+';
 	ret = kstrtoint(fw_type, 10, &temp);
-	if(ret < 0) {
+	if (ret < 0) {
 		bes2600_err(BES2600_DBG_CHARDEV, "%s parse error\n", __func__);
 		return -EINVAL;
 	}
 
 	/* no need to realod firmware if new fw_type is equal to the old */
-	if(temp == bes2600_cdev.fw_type ) {
+	if (temp == bes2600_cdev.fw_type ) {
 		bes2600_info(BES2600_DBG_CHARDEV, "fw type is equal\n");
 		return 0;
 	}
 
 	/* close wifi net device */
-	if(bes2600_cdev.sbus_priv
+	if (bes2600_cdev.sbus_priv
 	    && bes2600_is_net_dev_created(bes2600_cdev.sbus_priv)) {
 		bes2600_unregister_net_dev(bes2600_cdev.sbus_priv);
 	}
@@ -460,26 +461,32 @@ static int bes2600_op_change_fw_type(const char *str)
 	bes2600_cdev.fw_type = temp;
 	bes2600_chrdev_update_signal_mode();
 
-	if(!sys_closed) {
+	if (!sys_closed) {
 		/* close device to call disconnect function */
-		bes2600_cdev.sbus_ops->power_switch(bes2600_cdev.sbus_priv, 0);
+		if (bes2600_cdev.sbus_ops->power_switch)
+			bes2600_cdev.sbus_ops->power_switch(bes2600_cdev.sbus_priv, 0);
+		else if (bes2600_cdev.sbus_ops->reboot)
+			bes2600_cdev.sbus_ops->reboot(bes2600_cdev.sbus_priv);
 	}
+
+	if (bes2600_cdev.sbus_ops->reboot)
+		bes2600_chrdev_start_bus_probe();
 
 	/* wait disconnect event */
 	status = wait_event_timeout(bes2600_cdev.probe_done_wq, (bes2600_cdev.sbus_priv == NULL), HZ * 10);
 	WARN_ON(status <= 0);
 
-
-	if(bes2600_cdev.dpd_calied
+	if (bes2600_cdev.dpd_calied
 	   && bes2600_chrdev_check_system_close()) {
 		bes2600_info(BES2600_DBG_CHARDEV, "no need to reload firmware\n");
 		return 0;
 	}
 
-
-	/* power on device to call probe function */
 	bes2600_info(BES2600_DBG_CHARDEV, "reload firmware...\n");
-	bes2600_cdev.sbus_ops->power_switch(NULL, 1);
+	/* power on device to call probe function */
+	if (bes2600_cdev.sbus_ops->power_switch)
+		bes2600_cdev.sbus_ops->power_switch(NULL, 1);
+
 	/* wait probe done event */
 	status = wait_event_timeout(bes2600_cdev.probe_done_wq,
 			bes2600_bootup_end(), HZ * 10);
@@ -497,7 +504,7 @@ static int bes2600_op_bt_wakeup(const char *str)
 	unsigned long status = 0;
 
 	spin_lock(&bes2600_cdev.status_lock);
-	if(!bes2600_cdev.bt_opened) {
+	if (!bes2600_cdev.bt_opened) {
 		spin_unlock(&bes2600_cdev.status_lock);
 		return -EFAULT;
 	}
@@ -506,7 +513,7 @@ static int bes2600_op_bt_wakeup(const char *str)
 	/* wait probe done event */
 	status = wait_event_timeout(bes2600_cdev.probe_done_wq,
 			bes2600_bootup_end(), HZ * 8);
-	if(status <= 0 || bes2600_chrdev_is_bus_error())
+	if (status <= 0 || bes2600_chrdev_is_bus_error())
 		return -EFAULT;
 
 	bes2600_info(BES2600_DBG_CHARDEV, "bes2600 wakeup bt.\n");
@@ -521,7 +528,7 @@ static int bes2600_op_bt_sleep(const char *str)
 	unsigned long status = 0;
 
 	spin_lock(&bes2600_cdev.status_lock);
-	if(!bes2600_cdev.bt_opened) {
+	if (!bes2600_cdev.bt_opened) {
 		spin_unlock(&bes2600_cdev.status_lock);
 		return -EFAULT;
 	}
@@ -530,7 +537,7 @@ static int bes2600_op_bt_sleep(const char *str)
 	/* wait probe done event */
 	status = wait_event_timeout(bes2600_cdev.probe_done_wq,
 			bes2600_bootup_end(), HZ * 8);
-	if(status <= 0 || bes2600_chrdev_is_bus_error())
+	if (status <= 0 || bes2600_chrdev_is_bus_error())
 		return -EFAULT;
 
 	bes2600_info(BES2600_DBG_CHARDEV, "bes2600 allow bt sleep.\n");
@@ -587,15 +594,16 @@ static struct bes2600_op_map bes2600_op_map_tab[] ={
 
 static int bes2600_chrdev_check_system_close_internal(void)
 {
-	return (bes2600_cdev.fw_type == BES2600_FW_TYPE_WIFI_SIGNAL)
+	return (bes2600_cdev.sbus_ops->power_switch != NULL &&
+		bes2600_cdev.fw_type == BES2600_FW_TYPE_WIFI_SIGNAL)
 		&&(bes2600_cdev.bt_opened == false)
 		&& (bes2600_cdev.wifi_opened == false);
 }
 
 static int bes2600_chrdev_open(struct inode *inode, struct file *filp)
 {
-	if(atomic_read(&bes2600_cdev.num_proc) > 0) {
-		wait_event_timeout(bes2600_cdev.open_wq, 
+	if (atomic_read(&bes2600_cdev.num_proc) > 0) {
+		wait_event_timeout(bes2600_cdev.open_wq,
 			(atomic_read(&bes2600_cdev.num_proc) == 0),
 			MAX_SCHEDULE_TIMEOUT);
 	}
@@ -616,7 +624,7 @@ static ssize_t bes2600_chrdev_read(struct file *file, char __user *user_buf,
 	switch (bes2600_cdev.read_flag) {
 	case BES_CDEV_READ_WAKEUP_STATE:
 		if (bes2600_chrdev_wakeup_by_event_get() > WAKEUP_EVENT_NONE) {
-			status = wait_event_timeout(bes2600_cdev.wakeup_reason_wq, 
+			status = wait_event_timeout(bes2600_cdev.wakeup_reason_wq,
 				bes2600_chrdev_wakeup_by_event_get() ==  WAKEUP_EVENT_NONE, HZ * 2);
 			WARN_ON(status <= 0);
 		}
@@ -661,7 +669,7 @@ static ssize_t bes2600_chrdev_write(struct file *file,
 	buf[count] = '\0';
 
 	/* extract comand and interface */
-	if(bes2600_get_cmd_and_ifname(buf, info) != 0) {
+	if (bes2600_get_cmd_and_ifname(buf, info) != 0) {
 		bes2600_err(BES2600_DBG_CHARDEV, "%s get command fail, the origin string is %s\n", __func__, buf);
 		kfree(buf);
 		return -EINVAL;
@@ -669,18 +677,18 @@ static ssize_t bes2600_chrdev_write(struct file *file,
 
 	/* match operation item and execure its handler */
 	cmd_len = strlen(info[1]);
-	for(i = 0; i < cmd_num; i++) {
-		if(cmd_len < bes2600_op_map_tab[i].op_len)
+	for (i = 0; i < cmd_num; i++) {
+		if (cmd_len < bes2600_op_map_tab[i].op_len)
 			continue;
 
-		if(strncasecmp(info[1], bes2600_op_map_tab[i].op, bes2600_op_map_tab[i].op_len) == 0) {
+		if (strncasecmp(info[1], bes2600_op_map_tab[i].op, bes2600_op_map_tab[i].op_len) == 0) {
 			ret = bes2600_op_map_tab[i].handler(buf);
 			break;
 		}
 	}
 
 	/* operation item mismatch */
-	if(i == cmd_num) {
+	if (i == cmd_num) {
 		bes2600_err(BES2600_DBG_CHARDEV, "cmd(%s) mismatch\n", info[1]);
 	}
 
@@ -692,7 +700,7 @@ static ssize_t bes2600_chrdev_write(struct file *file,
 
 static int bes2600_chrdev_release (struct inode *inode, struct file *file)
 {
-	if(atomic_dec_and_test(&bes2600_cdev.num_proc)) {
+	if (atomic_dec_and_test(&bes2600_cdev.num_proc)) {
 		wake_up(&bes2600_cdev.open_wq);
 	}
 
@@ -716,7 +724,7 @@ static int bes2600_chrdev_write_dpd_data_to_file(const char *path, void *buffer,
 	int ret = 0;
 	struct file *fp;
 
-	if(buffer == NULL || size == 0)
+	if (buffer == NULL || size == 0)
 		return 0;
 
 	fp = filp_open(path, O_TRUNC | O_CREAT | O_RDWR, S_IRUSR);
@@ -789,7 +797,7 @@ static int bes2600_chrdev_read_and_check_dpd_data(const char *file, u8 **data, u
 
 	/* allocate memory for storing reading data */
 	read_data = kmalloc(fp->f_inode->i_size, GFP_KERNEL);
-	if(read_data == NULL) {
+	if (read_data == NULL) {
 		bes2600_info(BES2600_DBG_CHARDEV, "%s alloc mem fail\n", __func__);
 		goto err1;
 	}
@@ -800,7 +808,7 @@ static int bes2600_chrdev_read_and_check_dpd_data(const char *file, u8 **data, u
 #else
 	ret = kernel_read(fp, fp->f_pos, read_data, fp->f_inode->i_size);
 #endif
-	if(ret < DPD_BIN_SIZE) {
+	if (ret < DPD_BIN_SIZE) {
 		bes2600_err(BES2600_DBG_CHARDEV, "%s read fail, ret=%d\n", __func__, ret);
 		goto err2;
 	}
@@ -834,9 +842,9 @@ err1:
 const u8* bes2600_chrdev_get_dpd_data(u32 *len)
 {
 #ifdef BES2600_WRITE_DPD_TO_FILE
-	if(!bes2600_cdev.dpd_calied && bes2600_cdev.no_dpd) {
+	if (!bes2600_cdev.dpd_calied && bes2600_cdev.no_dpd) {
 		/* read dpd data from file that stores factory dpd calibration data */
-		if((bes2600_chrdev_read_and_check_dpd_data(BES2600_DPD_GOLDEN_PATH,
+		if ((bes2600_chrdev_read_and_check_dpd_data(BES2600_DPD_GOLDEN_PATH,
 		   	&bes2600_cdev.dpd_data, &bes2600_cdev.dpd_len) < 0) &&
 		   (bes2600_chrdev_read_and_check_dpd_data(BES2600_DEFAULT_DPD_PATH,
 			&bes2600_cdev.dpd_data, &bes2600_cdev.dpd_len) < 0)) {
@@ -848,9 +856,9 @@ const u8* bes2600_chrdev_get_dpd_data(u32 *len)
 	}
 #endif
 
-	if(!bes2600_cdev.dpd_calied)
+	if (!bes2600_cdev.dpd_calied)
 		return NULL;
-	if(len)
+	if (len)
 		*len = bes2600_cdev.dpd_len;
 
 	return bes2600_cdev.dpd_data;
@@ -858,11 +866,11 @@ const u8* bes2600_chrdev_get_dpd_data(u32 *len)
 
 u8* bes2600_chrdev_get_dpd_buffer(u32 size)
 {
-	if(bes2600_cdev.dpd_data)
+	if (bes2600_cdev.dpd_data)
 		kfree(bes2600_cdev.dpd_data);
 
 	bes2600_cdev.dpd_data = kmalloc(size, GFP_KERNEL);
-	if(!bes2600_cdev.dpd_data) {
+	if (!bes2600_cdev.dpd_data) {
 		return NULL;
 	}
 
@@ -873,7 +881,7 @@ u8* bes2600_chrdev_get_dpd_buffer(u32 size)
 
 void bes2600_chrdev_free_dpd_data(void)
 {
-	if(bes2600_cdev.dpd_data)
+	if (bes2600_cdev.dpd_data)
 		kfree(bes2600_cdev.dpd_data);
 
 	bes2600_cdev.dpd_data = NULL;
@@ -889,7 +897,7 @@ int bes2600_chrdev_update_dpd_data(void)
 	cal_crc ^= 0xffffffffL;
 	cal_crc = crc32_le(cal_crc, bes2600_cdev.dpd_data + 4, bes2600_cdev.dpd_len - 4);
 	cal_crc ^= 0xffffffffL;
-	if(cal_crc != dpd_crc) {
+	if (cal_crc != dpd_crc) {
 		bes2600_err(BES2600_DBG_CHARDEV,
 			"bes2600 dpd data check failed, calc_crc:0x%08x dpd_crc: 0x%08x\n",
 			cal_crc, dpd_crc);
@@ -901,7 +909,7 @@ int bes2600_chrdev_update_dpd_data(void)
 	/* update dpd calibration and wait state */
 	spin_lock(&bes2600_cdev.status_lock);
 	bes2600_cdev.dpd_calied = true;
-	if(bes2600_chrdev_check_system_close_internal()) {
+	if (bes2600_chrdev_check_system_close_internal()) {
 		bes2600_cdev.wait_state = BES2600_BOOT_WAIT_CLOSE;
 	} else {
 		bes2600_cdev.wait_state = BES2600_BOOT_WAIT_PROBE_DONE;
@@ -960,8 +968,8 @@ void bes2600_get_dpd_log(char **data, size_t *len)
 void bes2600_chrdev_set_sbus_priv_data(struct sbus_priv *priv, bool error)
 {
 	bes2600_cdev.sbus_priv = priv;
-	if(priv) {
-		if(bes2600_cdev.bton_pending) {
+	if (priv) {
+		if (bes2600_cdev.bton_pending) {
 			bes2600_info(BES2600_DBG_CHARDEV, "execute pending bt on operation.\n");
 			bes2600_chrdev_switch_subsys(GPIO_WAKE_FLAG_BT_ON, SUBSYSTEM_BT, true);
 
@@ -969,7 +977,7 @@ void bes2600_chrdev_set_sbus_priv_data(struct sbus_priv *priv, bool error)
 		}
 
 		spin_lock(&bes2600_cdev.status_lock);
-		if(bes2600_cdev.wait_state == BES2600_BOOT_WAIT_PROBE_DONE) {
+		if (bes2600_cdev.wait_state == BES2600_BOOT_WAIT_PROBE_DONE) {
 			bes2600_cdev.wait_state = BES2600_BOOT_WAIT_NONE;
 		}
 		spin_unlock(&bes2600_cdev.status_lock);
@@ -979,7 +987,7 @@ void bes2600_chrdev_set_sbus_priv_data(struct sbus_priv *priv, bool error)
 		spin_lock(&bes2600_cdev.status_lock);
 		bes2600_cdev.wait_state = BES2600_BOOT_WAIT_NONE;
 		bes2600_cdev.bus_error = error;
-		if(bes2600_cdev.bus_error) {
+		if (bes2600_cdev.bus_error) {
 			bes2600_cdev.wifi_opened = false;
 			bes2600_cdev.bt_opened = false;
 			bes2600_cdev.bton_pending = false;
@@ -1013,10 +1021,13 @@ int bes2600_chrdev_do_system_close(const struct sbus_ops *sbus_ops, struct sbus_
 	int ret = 0;
 	long status = 0;
 
-	if(!sbus_ops || !priv) {
+	if (!sbus_ops || !priv) {
 		bes2600_warn(BES2600_DBG_CHARDEV, "abort power down device.\n");
 		return 0;
 	}
+
+	if (!sbus_ops->power_switch)
+		return 0;
 
 	bes2600_dbg(BES2600_DBG_CHARDEV, "power down bes2600.\n");
 
@@ -1026,7 +1037,6 @@ int bes2600_chrdev_do_system_close(const struct sbus_ops *sbus_ops, struct sbus_
 	/* wait disconnect event */
 	status = wait_event_timeout(bes2600_cdev.probe_done_wq, (bes2600_cdev.sbus_priv == NULL), HZ * 3);
 	WARN_ON(status <= 0);
-
 
 	return ret;
 }
@@ -1039,11 +1049,11 @@ bool bes2600_chrdev_is_wifi_opened(void)
 	wifi_opened = bes2600_cdev.wifi_opened;
 	spin_unlock(&bes2600_cdev.status_lock);
 
-	if(bes2600_cdev.fw_type == BES2600_FW_TYPE_WIFI_NO_SIGNAL)
+	if (bes2600_cdev.fw_type == BES2600_FW_TYPE_WIFI_NO_SIGNAL)
 		return true;
-	else if(bes2600_cdev.fw_type == BES2600_FW_TYPE_BT)
+	else if (bes2600_cdev.fw_type == BES2600_FW_TYPE_BT)
 		return false;
-	else if(bes2600_cdev.fw_type == BES2600_FW_TYPE_WIFI_SIGNAL)
+	else if (bes2600_cdev.fw_type == BES2600_FW_TYPE_WIFI_SIGNAL)
 		return wifi_opened;
 
 	return false;
@@ -1057,11 +1067,11 @@ bool bes2600_chrdev_is_bt_opened(void)
 	bt_opened = bes2600_cdev.bt_opened;
 	spin_unlock(&bes2600_cdev.status_lock);
 
-	if(bes2600_cdev.fw_type == BES2600_FW_TYPE_WIFI_NO_SIGNAL)
+	if (bes2600_cdev.fw_type == BES2600_FW_TYPE_WIFI_NO_SIGNAL)
 		return false;
-	else if(bes2600_cdev.fw_type == BES2600_FW_TYPE_BT)
+	else if (bes2600_cdev.fw_type == BES2600_FW_TYPE_BT)
 		return true;
-	else if(bes2600_cdev.fw_type == BES2600_FW_TYPE_WIFI_SIGNAL)
+	else if (bes2600_cdev.fw_type == BES2600_FW_TYPE_WIFI_SIGNAL)
 		return bt_opened;
 
 	return false;
@@ -1071,7 +1081,7 @@ void bes2600_chrdev_wakeup_bt(void)
 {
 	int ret = 0;
 
-	if(bes2600_cdev.bt_opened && bes2600_cdev.sbus_priv) {
+	if (bes2600_cdev.bt_opened && bes2600_cdev.sbus_priv) {
 		bes2600_info(BES2600_DBG_PM, "wakeup bt in resume flow\n");
 		ret = bes2600_chrdev_switch_subsys(GPIO_WAKE_FLAG_BT_LP_ON, SUBSYSTEM_BT_LP, true);
 
@@ -1102,7 +1112,7 @@ bool bes2600_chrdev_is_bus_error(void)
 
 void bes2600_chrdev_update_signal_mode(void)
 {
-	if(bes2600_cdev.fw_type >= BES2600_FW_TYPE_MAX_NUM) {
+	if (bes2600_cdev.fw_type >= BES2600_FW_TYPE_MAX_NUM) {
 		bes2600_cdev.fw_type = BES2600_FW_TYPE_WIFI_SIGNAL;
 		bes2600_warn(BES2600_DBG_CHARDEV, "unexpected fw type, switch to wifi signal mode\n");
 	}
@@ -1123,11 +1133,11 @@ static void bes2600_chrdev_wifi_force_close_work(struct work_struct *work)
 	char *env[] = { wifi_state, bt_state, fw_type, NULL };
 	int ret;
 
-	if(bes2600_chrdev_is_wifi_opened()) {
+	if (bes2600_chrdev_is_wifi_opened()) {
 		bes2600_info(BES2600_DBG_CHARDEV, "system exeception, force wifi down\n");
 
 		/* halt device if needed */
-		if(bes2600_cdev.halt_dev && bes2600_cdev.sbus_ops->halt_device) {
+		if (bes2600_cdev.halt_dev && bes2600_cdev.sbus_ops->halt_device) {
 			bes2600_cdev.sbus_ops->halt_device(bes2600_cdev.sbus_priv);
 		}
 
@@ -1135,7 +1145,7 @@ static void bes2600_chrdev_wifi_force_close_work(struct work_struct *work)
 		bes2600_switch_wifi(0);
 
 		/* power down device if wifi is only opened */
-		if(bes2600_chrdev_check_system_close()) {
+		if (bes2600_chrdev_check_system_close()) {
 			bes2600_chrdev_do_system_close(bes2600_cdev.sbus_ops,
 						bes2600_cdev.sbus_priv);
 		}
@@ -1151,18 +1161,34 @@ static void bes2600_chrdev_wifi_force_close_work(struct work_struct *work)
 
 void bes2600_chrdev_wifi_force_close(struct bes2600_common *hw_priv, bool halt_dev)
 {
-	if(hw_priv == NULL)
+	if (hw_priv == NULL)
 		return;
 
-	if(bes2600_chrdev_is_wifi_opened() &&
+	if (bes2600_chrdev_is_wifi_opened() &&
 	   !work_pending(&bes2600_cdev.wifi_force_close_work)) {
 		spin_lock(&bes2600_cdev.status_lock);
 		bes2600_cdev.bus_error = true;
 		bes2600_cdev.halt_dev = halt_dev;
 		spin_unlock(&bes2600_cdev.status_lock);
 
-		bes2600_tx_loop_set_enable(hw_priv);
+		bes2600_tx_loop_set_enable(hw_priv, true);
 		schedule_work(&bes2600_cdev.wifi_force_close_work);
+	}
+}
+
+void bes2600_chrdev_usb_remove(struct bes2600_common *hw_priv)
+{
+	if (hw_priv == NULL)
+		return;
+
+	if (bes2600_chrdev_is_wifi_opened() &&
+	   !work_pending(&bes2600_cdev.wifi_force_close_work)) {
+		spin_lock(&bes2600_cdev.status_lock);
+		bes2600_cdev.bus_error = true;
+		spin_unlock(&bes2600_cdev.status_lock);
+
+		bes2600_tx_loop_set_enable(hw_priv, false);
+		bes2600_chrdev_wifi_force_close_work(&bes2600_cdev.wifi_force_close_work);
 	}
 }
 
@@ -1199,7 +1225,6 @@ void bes2600_chrdev_bus_probe_notify(void)
 	wake_up(&bes2600_cdev.probe_done_wq);
 }
 
-#if defined(CONFIG_BES2600_WLAN_SDIO) || defined(CONFIG_BES2600_WLAN_SPI)
 void bes2600_chrdev_wifi_update_wakeup_reason(u16 reason, u16 port)
 {
 	spin_lock(&bes2600_cdev.status_lock);
@@ -1221,7 +1246,6 @@ int bes2600_chrdev_wakeup_by_event_get(void)
 {
 	return bes2600_cdev.wakeup_by_event;
 }
-#endif
 
 int bes2600_chrdev_init(struct sbus_ops *ops)
 {
@@ -1229,7 +1253,7 @@ int bes2600_chrdev_init(struct sbus_ops *ops)
 
 	/* allocate devide id */
 	ret = alloc_chrdev_region(&bes2600_cdev.dev_id, 0, 1, "bes2600_chrdev");
-	if(ret < 0){
+	if (ret < 0){
 		bes2600_err(BES2600_DBG_CHARDEV, "bes2600 alloc device id fail\n");
 		ret =  -EFAULT;
 		goto fail;
@@ -1243,14 +1267,18 @@ int bes2600_chrdev_init(struct sbus_ops *ops)
 	bes2600_cdev.cdev.owner = THIS_MODULE;
 	cdev_init(&bes2600_cdev.cdev, &bes2600_chardev_fops);
 	ret = cdev_add(&bes2600_cdev.cdev, bes2600_cdev.dev_id, 1);
-	if(ret < 0){
+	if (ret < 0){
 		bes2600_err(BES2600_DBG_CHARDEV, "bes2600 char device add fail\n");
 		ret =  -EFAULT;
 		goto fail1;
 	}
 
 	/* create class for creating device node */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
 	bes2600_cdev.class = class_create("bes2600_chrdev");
+#else
+	bes2600_cdev.class = class_create(THIS_MODULE, "bes2600_chrdev");
+#endif
 	if (IS_ERR(bes2600_cdev.class)){
 		bes2600_err(BES2600_DBG_CHARDEV, "bes2600 char device add fail\n");
 		ret = -EFAULT;
@@ -1259,7 +1287,7 @@ int bes2600_chrdev_init(struct sbus_ops *ops)
 
 	/* get char device pointer */
 	bes2600_cdev.device = device_create(bes2600_cdev.class, NULL, bes2600_cdev.dev_id, NULL, "bes2600");
-	if(IS_ERR(bes2600_cdev.device)){
+	if (IS_ERR(bes2600_cdev.device)){
 		bes2600_err(BES2600_DBG_CHARDEV, "bes2600 char device create fail\n");
 		ret =  -EFAULT;
 		goto fail3;
@@ -1292,7 +1320,7 @@ int bes2600_chrdev_init(struct sbus_ops *ops)
 	bes2600_cdev.bus_error = false;
 	bes2600_cdev.halt_dev = false;
 	bes2600_cdev.read_flag = BES_CDEV_READ_NUM_MAX;
-	bes2600_cdev.wakeup_by_event = false;
+	bes2600_cdev.wakeup_by_event = WAKEUP_EVENT_NONE;
 	bes2600_info(BES2600_DBG_CHARDEV, "%s done\n", __func__);
 
 	return 0;
@@ -1309,6 +1337,7 @@ fail:
 
 void bes2600_chrdev_free(void)
 {
+	cancel_delayed_work_sync(&bes2600_cdev.probe_timeout_work);
 #ifdef BES2600_DUMP_FW_DPD_LOG
 	bes2600_free_dpd_log_buffer();
 #endif

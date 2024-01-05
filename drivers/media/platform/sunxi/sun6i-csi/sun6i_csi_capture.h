@@ -27,7 +27,11 @@ struct sun6i_csi_capture_format {
 	bool	input_yuv_seq_invert;
 	bool	input_format_raw;
 	u32	hsize_len_factor;
-	const u32 *mbus_codes;
+};
+
+struct sun6i_csi_capture_format_match {
+	u32	pixelformat;
+	u32	mbus_code;
 };
 
 #undef current

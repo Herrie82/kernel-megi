@@ -36,7 +36,10 @@ void bes2600_configure_filter(struct ieee80211_hw *dev,
 			     unsigned int *total_flags,
 			     u64 multicast);
 int bes2600_conf_tx(struct ieee80211_hw *dev, struct ieee80211_vif *vif,
-		unsigned int link_id, u16 queue, const struct ieee80211_tx_queue_params *params);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0)
+		unsigned int link_id,
+#endif
+		u16 queue, const struct ieee80211_tx_queue_params *params);
 int bes2600_get_stats(struct ieee80211_hw *dev,
 		     struct ieee80211_low_level_stats *stats);
 /* Not more a part of interface?
@@ -139,8 +142,6 @@ int bes2600_testmode_event(struct wiphy *wiphy, const u32 msg_id,
 int bes2600_get_tx_power_range(struct ieee80211_hw *hw);
 int bes2600_get_tx_power_level(struct ieee80211_hw *hw);
 #endif /* CONFIG_BES2600_TESTMODE */
-#ifdef CONFIG_BES2600_WLAN_BES
 int bes2600_wifi_start(struct bes2600_common *hw_priv);
 int bes2600_wifi_stop(struct bes2600_common *hw_priv);
-#endif
 #endif /* STA_H_INCLUDED */

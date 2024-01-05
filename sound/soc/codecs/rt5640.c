@@ -12,11 +12,10 @@
 #include <linux/init.h>
 #include <linux/delay.h>
 #include <linux/pm.h>
-#include <linux/gpio.h>
+#include <linux/gpio/consumer.h>
 #include <linux/i2c.h>
 #include <linux/regmap.h>
 #include <linux/of.h>
-#include <linux/of_gpio.h>
 #include <linux/platform_device.h>
 #include <linux/spi/spi.h>
 #include <linux/acpi.h>
@@ -343,7 +342,6 @@ static const DECLARE_TLV_DB_MINMAX(dac_vol_tlv, -6562, 0);
 static const DECLARE_TLV_DB_SCALE(in_vol_tlv, -3450, 150, 0);
 static const DECLARE_TLV_DB_MINMAX(adc_vol_tlv, -1762, 3000);
 static const DECLARE_TLV_DB_SCALE(adc_bst_tlv, 0, 1200, 0);
-static const DECLARE_TLV_DB_MINMAX(rec_gain_tlv, -1800, 0);
 
 /* {0, +20, +24, +30, +35, +40, +44, +50, +52} dB */
 static const DECLARE_TLV_DB_RANGE(bst_tlv,
@@ -414,23 +412,6 @@ static const struct snd_kcontrol_new rt5640_snd_controls[] = {
 		RT5640_BST_SFT2, 8, 0, bst_tlv),
 	SOC_SINGLE_TLV("IN3 Boost", RT5640_IN1_IN2,
 		RT5640_BST_SFT2, 8, 0, bst_tlv),
-
-	/* RECMIXL Gain Controls */
-	SOC_SINGLE_TLV("RECMIXL INL Gain", RT5640_REC_L1_MIXER, 10, 6, 1, rec_gain_tlv),
-	SOC_SINGLE_TLV("RECMIXL BST2 Gain", RT5640_REC_L1_MIXER, 7, 6, 1, rec_gain_tlv),
-	SOC_SINGLE_TLV("RECMIXL BST3 Gain", RT5640_REC_L1_MIXER, 1, 6, 1, rec_gain_tlv),
-	SOC_SINGLE_TLV("RECMIXL BST1 Gain", RT5640_REC_L2_MIXER, 13, 6, 1, rec_gain_tlv),
-	SOC_SINGLE_TLV("RECMIXL OUTMIXL Gain", RT5640_REC_L2_MIXER, 10, 6, 1, rec_gain_tlv),
-	
-	SOC_SINGLE_TLV("RECMIXR INR Gain", RT5640_REC_R1_MIXER, 10, 6, 1, rec_gain_tlv),
-	SOC_SINGLE_TLV("RECMIXR BST2 Gain", RT5640_REC_R1_MIXER, 7, 6, 1, rec_gain_tlv),
-	SOC_SINGLE_TLV("RECMIXR BST3 Gain", RT5640_REC_R1_MIXER, 1, 6, 1, rec_gain_tlv),
-	SOC_SINGLE_TLV("RECMIXR BST1 Gain", RT5640_REC_R2_MIXER, 13, 6, 1, rec_gain_tlv),
-	SOC_SINGLE_TLV("RECMIXR OUTMIXR Gain", RT5640_REC_R2_MIXER, 10, 6, 1, rec_gain_tlv),
-
-	SOC_SINGLE("IN3 Differential Mode", RT5640_IN1_IN2, 6, 1, 0),
-	SOC_SINGLE("IN2 Differential Mode", RT5640_IN3_IN4, 6, 1, 0),
-	SOC_SINGLE("LOUT Differential Mode", 0xfa, 14, 1, 0),
 
 	/* INL/INR Volume Control */
 	SOC_DOUBLE_TLV("IN Capture Volume", RT5640_INL_INR_VOL,
@@ -670,8 +651,8 @@ static const struct snd_kcontrol_new rt5640_spk_r_mix[] = {
 };
 
 static const struct snd_kcontrol_new rt5640_out_l_mix[] = {
-	SOC_DAPM_SINGLE("BST3 Switch", RT5640_OUT_L3_MIXER,
-			RT5640_M_BST3_OM_L_SFT, 1, 1),
+	SOC_DAPM_SINGLE("SPK MIXL Switch", RT5640_OUT_L3_MIXER,
+			RT5640_M_SM_L_OM_L_SFT, 1, 1),
 	SOC_DAPM_SINGLE("BST1 Switch", RT5640_OUT_L3_MIXER,
 			RT5640_M_BST1_OM_L_SFT, 1, 1),
 	SOC_DAPM_SINGLE("INL Switch", RT5640_OUT_L3_MIXER,
@@ -687,10 +668,10 @@ static const struct snd_kcontrol_new rt5640_out_l_mix[] = {
 };
 
 static const struct snd_kcontrol_new rt5640_out_r_mix[] = {
+	SOC_DAPM_SINGLE("SPK MIXR Switch", RT5640_OUT_R3_MIXER,
+			RT5640_M_SM_L_OM_R_SFT, 1, 1),
 	SOC_DAPM_SINGLE("BST2 Switch", RT5640_OUT_R3_MIXER,
-			RT5640_M_BST2_OM_R_SFT, 1, 1),
-	SOC_DAPM_SINGLE("BST3 Switch", RT5640_OUT_R3_MIXER,
-			RT5640_M_BST3_OM_R_SFT, 1, 1),
+			RT5640_M_BST4_OM_R_SFT, 1, 1),
 	SOC_DAPM_SINGLE("BST1 Switch", RT5640_OUT_R3_MIXER,
 			RT5640_M_BST1_OM_R_SFT, 1, 1),
 	SOC_DAPM_SINGLE("INR Switch", RT5640_OUT_R3_MIXER,
@@ -1014,8 +995,7 @@ static int rt5640_lout_event(struct snd_soc_dapm_widget *w,
 
 	switch (event) {
 	case SND_SOC_DAPM_POST_PMU:
-		//hp_amp_power_on(component);
-		//XXX: ^^ breaks hpout restore
+		hp_amp_power_on(component);
 		snd_soc_component_update_bits(component, RT5640_PWR_ANLG1,
 			RT5640_PWR_LM, RT5640_PWR_LM);
 		snd_soc_component_update_bits(component, RT5640_OUTPUT,
@@ -1623,8 +1603,8 @@ static const struct snd_soc_dapm_route rt5640_specific_dapm_routes[] = {
 	{"SPK MIXL", "DAC L2 Switch", "DAC L2"},
 	{"SPK MIXR", "DAC R2 Switch", "DAC R2"},
 
-	{"OUT MIXL", "BST3 Switch", "BST3"},
-	{"OUT MIXR", "BST3 Switch", "BST3"},
+	{"OUT MIXL", "SPK MIXL Switch", "SPK MIXL"},
+	{"OUT MIXR", "SPK MIXR Switch", "SPK MIXR"},
 
 	{"OUT MIXL", "DAC R2 Switch", "DAC R2"},
 	{"OUT MIXL", "DAC L2 Switch", "DAC L2"},
@@ -1857,9 +1837,6 @@ static int rt5640_set_dai_sysclk(struct snd_soc_dai *dai,
 	unsigned int reg_val = 0;
 	unsigned int pll_bit = 0;
 	int ret;
-
-	if (freq == 0)
-		return 0;
 
 	switch (clk_id) {
 	case RT5640_SCLK_S_MCLK:
@@ -2426,13 +2403,11 @@ static irqreturn_t rt5640_irq(int irq, void *data)
 	struct rt5640_priv *rt5640 = data;
 	int delay = 0;
 
-	if (rt5640->jd_src == RT5640_JD_SRC_HDA_HEADER) {
-		cancel_delayed_work_sync(&rt5640->jack_work);
+	if (rt5640->jd_src == RT5640_JD_SRC_HDA_HEADER)
 		delay = 100;
-	}
 
 	if (rt5640->jack)
-		queue_delayed_work(system_long_wq, &rt5640->jack_work, delay);
+		mod_delayed_work(system_long_wq, &rt5640->jack_work, delay);
 
 	return IRQ_HANDLED;
 }
@@ -2588,12 +2563,11 @@ static void rt5640_enable_jack_detect(struct snd_soc_component *component,
 	if (jack_data && jack_data->use_platform_clock)
 		rt5640->use_platform_clock = jack_data->use_platform_clock;
 
-	ret = devm_request_threaded_irq(component->dev, rt5640->irq,
-					NULL, rt5640_irq,
-					IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
-					"rt5640", rt5640);
+	ret = request_irq(rt5640->irq, rt5640_irq,
+			  IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
+			  "rt5640", rt5640);
 	if (ret) {
-		dev_warn(component->dev, "Failed to reguest IRQ %d: %d\n", rt5640->irq, ret);
+		dev_warn(component->dev, "Failed to request IRQ %d: %d\n", rt5640->irq, ret);
 		rt5640_disable_jack_detect(component);
 		return;
 	}
@@ -2644,14 +2618,14 @@ static void rt5640_enable_hda_jack_detect(
 
 	rt5640->jack = jack;
 
-	ret = devm_request_threaded_irq(component->dev, rt5640->irq,
-					NULL, rt5640_irq, IRQF_TRIGGER_RISING | IRQF_ONESHOT,
-					"rt5640", rt5640);
+	ret = request_irq(rt5640->irq, rt5640_irq,
+			  IRQF_TRIGGER_RISING | IRQF_ONESHOT, "rt5640", rt5640);
 	if (ret) {
-		dev_warn(component->dev, "Failed to reguest IRQ %d: %d\n", rt5640->irq, ret);
-		rt5640->irq = -ENXIO;
+		dev_warn(component->dev, "Failed to request IRQ %d: %d\n", rt5640->irq, ret);
+		rt5640->jack = NULL;
 		return;
 	}
+	rt5640->irq_requested = true;
 
 	/* sync initial jack state */
 	queue_delayed_work(system_long_wq, &rt5640->jack_work, 0);
@@ -2824,18 +2798,18 @@ static int rt5640_suspend(struct snd_soc_component *component)
 {
 	struct rt5640_priv *rt5640 = snd_soc_component_get_drvdata(component);
 
-	if (rt5640->irq) {
+	if (rt5640->jack) {
 		/* disable jack interrupts during system suspend */
 		disable_irq(rt5640->irq);
+		rt5640_cancel_work(rt5640);
 	}
 
-	rt5640_cancel_work(rt5640);
 	snd_soc_component_force_bias_level(component, SND_SOC_BIAS_OFF);
 	rt5640_reset(component);
 	regcache_cache_only(rt5640->regmap, true);
 	regcache_mark_dirty(rt5640->regmap);
-	if (gpio_is_valid(rt5640->ldo1_en))
-		gpio_set_value_cansleep(rt5640->ldo1_en, 0);
+	if (rt5640->ldo1_en)
+		gpiod_set_value_cansleep(rt5640->ldo1_en, 0);
 
 	return 0;
 }
@@ -2844,16 +2818,13 @@ static int rt5640_resume(struct snd_soc_component *component)
 {
 	struct rt5640_priv *rt5640 = snd_soc_component_get_drvdata(component);
 
-	if (gpio_is_valid(rt5640->ldo1_en)) {
-		gpio_set_value_cansleep(rt5640->ldo1_en, 1);
+	if (rt5640->ldo1_en) {
+		gpiod_set_value_cansleep(rt5640->ldo1_en, 1);
 		msleep(400);
 	}
 
 	regcache_cache_only(rt5640->regmap, false);
 	regcache_sync(rt5640->regmap);
-
-	if (rt5640->irq)
-		enable_irq(rt5640->irq);
 
 	if (rt5640->jack) {
 		if (rt5640->jd_src == RT5640_JD_SRC_HDA_HEADER) {
@@ -2882,6 +2853,7 @@ static int rt5640_resume(struct snd_soc_component *component)
 			}
 		}
 
+		enable_irq(rt5640->irq);
 		queue_delayed_work(system_long_wq, &rt5640->jack_work, 0);
 	}
 
@@ -2957,8 +2929,6 @@ static const struct snd_soc_component_driver soc_component_dev_rt5640 = {
 	.num_dapm_widgets	= ARRAY_SIZE(rt5640_dapm_widgets),
 	.dapm_routes		= rt5640_dapm_routes,
 	.num_dapm_routes	= ARRAY_SIZE(rt5640_dapm_routes),
-	.suspend_bias_off	= 1,
-	.idle_bias_on		= 1,
 	.use_pmdown_time	= 1,
 	.endianness		= 1,
 };
@@ -3010,22 +2980,6 @@ static const struct acpi_device_id rt5640_acpi_match[] = {
 MODULE_DEVICE_TABLE(acpi, rt5640_acpi_match);
 #endif
 
-static int rt5640_parse_dt(struct rt5640_priv *rt5640, struct device_node *np)
-{
-	rt5640->ldo1_en = of_get_named_gpio(np, "realtek,ldo1-en-gpios", 0);
-	/*
-	 * LDO1_EN is optional (it may be statically tied on the board).
-	 * -ENOENT means that the property doesn't exist, i.e. there is no
-	 * GPIO, so is not an error. Any other error code means the property
-	 * exists, but could not be parsed.
-	 */
-	if (!gpio_is_valid(rt5640->ldo1_en) &&
-			(rt5640->ldo1_en != -ENOENT))
-		return rt5640->ldo1_en;
-
-	return 0;
-}
-
 static int rt5640_i2c_probe(struct i2c_client *i2c)
 {
 	struct rt5640_priv *rt5640;
@@ -3039,12 +2993,16 @@ static int rt5640_i2c_probe(struct i2c_client *i2c)
 		return -ENOMEM;
 	i2c_set_clientdata(i2c, rt5640);
 
-	if (i2c->dev.of_node) {
-		ret = rt5640_parse_dt(rt5640, i2c->dev.of_node);
-		if (ret)
-			return ret;
-	} else
-		rt5640->ldo1_en = -EINVAL;
+	rt5640->ldo1_en = devm_gpiod_get_optional(&i2c->dev,
+						  "realtek,ldo1-en",
+						  GPIOD_OUT_HIGH);
+	if (IS_ERR(rt5640->ldo1_en))
+		return PTR_ERR(rt5640->ldo1_en);
+
+	if (rt5640->ldo1_en) {
+		gpiod_set_consumer_name(rt5640->ldo1_en, "RT5640 LDO1_EN");
+		msleep(400);
+	}
 
 	rt5640->regmap = devm_regmap_init_i2c(i2c, &rt5640_regmap);
 	if (IS_ERR(rt5640->regmap)) {
@@ -3052,18 +3010,6 @@ static int rt5640_i2c_probe(struct i2c_client *i2c)
 		dev_err(&i2c->dev, "Failed to allocate register map: %d\n",
 			ret);
 		return ret;
-	}
-
-	if (gpio_is_valid(rt5640->ldo1_en)) {
-		ret = devm_gpio_request_one(&i2c->dev, rt5640->ldo1_en,
-					    GPIOF_OUT_INIT_HIGH,
-					    "RT5640 LDO1_EN");
-		if (ret < 0) {
-			dev_err(&i2c->dev, "Failed to request LDO1_EN %d: %d\n",
-				rt5640->ldo1_en, ret);
-			return ret;
-		}
-		msleep(400);
 	}
 
 	regmap_read(rt5640->regmap, RT5640_VENDOR_ID2, &val);

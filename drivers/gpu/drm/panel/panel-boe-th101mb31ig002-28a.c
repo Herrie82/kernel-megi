@@ -34,36 +34,99 @@ static inline struct boe *panel_to_boe(struct drm_panel *panel)
 	return container_of(panel, struct boe, panel);
 }
 
-static int boe_disable(struct drm_panel *panel)
+static void boe_reset(struct boe *ctx)
 {
-	struct boe *ctx = panel_to_boe(panel);
+	gpiod_direction_output(ctx->reset, 0);
+	usleep_range(10, 100);
+	gpiod_direction_output(ctx->reset, 1);
+	usleep_range(10, 100);
+	gpiod_direction_output(ctx->reset, 0);
+	usleep_range(5000, 6000);
+}
 
-	if (!ctx->enabled)
-		return 0;
+static int boe_enable(struct boe *ctx)
+{
+	struct mipi_dsi_device *dsi = ctx->dsi;
+	struct device *dev = &dsi->dev;
+	int ret;
 
-	mipi_dsi_dcs_set_display_off(ctx->dsi);
+	mipi_dsi_dcs_write_seq(dsi, 0xE0, 0xAB, 0xBA);
+	mipi_dsi_dcs_write_seq(dsi, 0xE1, 0xBA, 0xAB);
+	mipi_dsi_dcs_write_seq(dsi, 0xB1, 0x10, 0x01, 0x47, 0xFF);
+	mipi_dsi_dcs_write_seq(dsi, 0xB2, 0x0C, 0x14, 0x04, 0x50, 0x50, 0x14);
+	mipi_dsi_dcs_write_seq(dsi, 0xB3, 0x56, 0x53, 0x00);
+	mipi_dsi_dcs_write_seq(dsi, 0xB4, 0x33, 0x30, 0x04);
+	mipi_dsi_dcs_write_seq(dsi, 0xB6, 0xB0, 0x00, 0x00, 0x10, 0x00, 0x10, 0x00);
+	mipi_dsi_dcs_write_seq(dsi, 0xB8, 0x05, 0x12, 0x29, 0x49, 0x48, 0x00, 0x00);
+	mipi_dsi_dcs_write_seq(dsi, 0xB9, 0x7C, 0x65, 0x55, 0x49, 0x46, 0x36, 0x3B, 0x24, 0x3D, 0x3C, 0x3D, 0x5C, 0x4C, 0x55, 0x47, 0x46, 0x39, 0x26, 0x06, 0x7C, 0x65, 0x55, 0x49, 0x46, 0x36, 0x3B, 0x24, 0x3D, 0x3C, 0x3D, 0x5C, 0x4C, 0x55, 0x47, 0x46, 0x39, 0x26, 0x06);
+	mipi_dsi_dcs_write_seq(dsi, 0xC0, 0xFF, 0x87, 0x12, 0x34, 0x44, 0x44, 0x44, 0x44, 0x98, 0x04, 0x98, 0x04, 0x0F, 0x00, 0x00, 0xC1);
+	mipi_dsi_dcs_write_seq(dsi, 0xC1, 0x54, 0x94, 0x02, 0x85, 0x9F, 0x00, 0x7F, 0x00, 0x54, 0x00);
+	mipi_dsi_dcs_write_seq(dsi, 0xC2, 0x17, 0x09, 0x08, 0x89, 0x08, 0x11, 0x22, 0x20, 0x44, 0xFF, 0x18, 0x00);
+	mipi_dsi_dcs_write_seq(dsi, 0xC3, 0x86, 0x46, 0x05, 0x05, 0x1C, 0x1C, 0x1D, 0x1D, 0x02, 0x1F, 0x1F, 0x1E, 0x1E, 0x0F, 0x0F, 0x0D, 0x0D, 0x13, 0x13, 0x11, 0x11, 0x00);
+	mipi_dsi_dcs_write_seq(dsi, 0xC4, 0x07, 0x07, 0x04, 0x04, 0x1C, 0x1C, 0x1D, 0x1D, 0x02, 0x1F, 0x1F, 0x1E, 0x1E, 0x0E, 0x0E, 0x0C, 0x0C, 0x12, 0x12, 0x10, 0x10, 0x00);
+	mipi_dsi_dcs_write_seq(dsi, 0xC6, 0x2A, 0x2A);
+	mipi_dsi_dcs_write_seq(dsi, 0xC8, 0x21, 0x00, 0x31, 0x42, 0x34, 0x16);
+	mipi_dsi_dcs_write_seq(dsi, 0xCA, 0xCB, 0x43);
+	mipi_dsi_dcs_write_seq(dsi, 0xCD, 0x0E, 0x4B, 0x4B, 0x20, 0x19, 0x6B, 0x06, 0xB3);
+	mipi_dsi_dcs_write_seq(dsi, 0xD2, 0xE3, 0x2B, 0x38, 0x00);
+	mipi_dsi_dcs_write_seq(dsi, 0xD4, 0x00, 0x01, 0x00, 0x0E, 0x04, 0x44, 0x08, 0x10, 0x00, 0x00, 0x00);
+	mipi_dsi_dcs_write_seq(dsi, 0xE6, 0x80, 0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF);
+	mipi_dsi_dcs_write_seq(dsi, 0xF0, 0x12, 0x03, 0x20, 0x00, 0xFF);
+	mipi_dsi_dcs_write_seq(dsi, 0xF3, 0x00);
+
+	ret = mipi_dsi_dcs_exit_sleep_mode(dsi);
+	if (ret < 0) {
+		dev_err(dev, "Failed to exit sleep mode: %d\n", ret);
+		return ret;
+	}
 
 	msleep(120);
 
-	ctx->enabled = false;
+	ret = mipi_dsi_dcs_set_display_on(dsi);
+	if (ret < 0) {
+		dev_err(dev, "Failed to set panel on: %d\n", ret);
+		return ret;
+	}
+
+	return 0;
+}
+
+static int boe_disable(struct boe *ctx)
+{
+	struct mipi_dsi_device *dsi = ctx->dsi;
+	struct device *dev = &dsi->dev;
+	int ret;
+
+	ret = mipi_dsi_dcs_set_display_off(dsi);
+	if (ret < 0)
+		dev_err(dev, "Failed to set panel off: %d\n", ret);
+
+	msleep(120);
+
+	ret = mipi_dsi_dcs_enter_sleep_mode(dsi);
+	if (ret < 0)
+		dev_err(dev, "Failed to enter sleep mode: %d\n", ret);
+
 	return 0;
 }
 
 static int boe_unprepare(struct drm_panel *panel)
 {
 	struct boe *ctx = panel_to_boe(panel);
+	int ret;
 
 	if (!ctx->prepared)
 		return 0;
 
-	mipi_dsi_dcs_enter_sleep_mode(ctx->dsi);
-
-	msleep(220);
+	ret = boe_disable(ctx);
+	if (ret < 0)
+		dev_err(panel->dev, "Failed to un-initialize panel: %d\n", ret);
 
 	gpiod_set_value_cansleep(ctx->reset, 1);
 	gpiod_set_value_cansleep(ctx->enable, 0);
 	regulator_disable(ctx->power);
 
+	ctx->enabled = false;
 	ctx->prepared = false;
 	return 0;
 }
@@ -71,7 +134,7 @@ static int boe_unprepare(struct drm_panel *panel)
 static int boe_prepare(struct drm_panel *panel)
 {
 	struct boe *ctx = panel_to_boe(panel);
-	struct mipi_dsi_device *dsi = ctx->dsi;
+	struct device *dev = &ctx->dsi->dev;
 	int ret;
 
 	if (ctx->prepared)
@@ -79,68 +142,27 @@ static int boe_prepare(struct drm_panel *panel)
 
 	ret = regulator_enable(ctx->power);
 	if (ret) {
-		dev_err(&dsi->dev, "Failed to enable power supply: %d\n", ret);
+		dev_err(dev, "Failed to enable power supply: %d\n", ret);
 		return ret;
 	}
 
 	gpiod_set_value_cansleep(ctx->enable, 1);
+	msleep(50);
 
-	msleep(120);
+	ctx->enabled = true;
 
-	gpiod_direction_output(ctx->reset, 1);
+	boe_reset(ctx);
 
-	msleep(120);
-
-	gpiod_direction_output(ctx->reset, 0);
-
-	msleep(120);
-
-	mipi_dsi_dcs_write_buffer(dsi, (u8[]){ 0xE0, 0xAB, 0xBA }, 3);
-	mipi_dsi_dcs_write_buffer(dsi, (u8[]){ 0xE1, 0xBA, 0xAB }, 3);
-	mipi_dsi_dcs_write_buffer(dsi, (u8[]){ 0xB1, 0x10, 0x01, 0x47, 0xFF }, 5);
-	mipi_dsi_dcs_write_buffer(dsi, (u8[]){ 0xB2, 0x0C, 0x14, 0x04, 0x50, 0x50, 0x14 }, 7);
-	mipi_dsi_dcs_write_buffer(dsi, (u8[]){ 0xB3, 0x56, 0x53, 0x00 }, 4);
-	mipi_dsi_dcs_write_buffer(dsi, (u8[]){ 0xB4, 0x33, 0x30, 0x04 }, 4);
-	mipi_dsi_dcs_write_buffer(dsi, (u8[]){ 0xB6, 0xB0, 0x00, 0x00, 0x10, 0x00, 0x10, 0x00 }, 8);
-	mipi_dsi_dcs_write_buffer(dsi, (u8[]){ 0xB8, 0x05, 0x12, 0x29, 0x49, 0x48, 0x00, 0x00 }, 8);
-	mipi_dsi_dcs_write_buffer(dsi, (u8[]){ 0xB9, 0x7C, 0x65, 0x55, 0x49, 0x46, 0x36, 0x3B, 0x24, 0x3D, 0x3C, 0x3D, 0x5C, 0x4C, 0x55, 0x47, 0x46, 0x39, 0x26, 0x06, 0x7C, 0x65, 0x55, 0x49, 0x46, 0x36, 0x3B, 0x24, 0x3D, 0x3C, 0x3D, 0x5C, 0x4C, 0x55, 0x47, 0x46, 0x39, 0x26, 0x06 }, 39);
-	mipi_dsi_dcs_write_buffer(dsi, (u8[]){ 0xC0, 0xFF, 0x87, 0x12, 0x34, 0x44, 0x44, 0x44, 0x44, 0x98, 0x04, 0x98, 0x04, 0x0F, 0x00, 0x00, 0xC1 }, 17);
-	mipi_dsi_dcs_write_buffer(dsi, (u8[]){ 0xC1, 0x54, 0x94, 0x02, 0x85, 0x9F, 0x00, 0x7F, 0x00, 0x54, 0x00 }, 11);
-	mipi_dsi_dcs_write_buffer(dsi, (u8[]){ 0xC2, 0x17, 0x09, 0x08, 0x89, 0x08, 0x11, 0x22, 0x20, 0x44, 0xFF, 0x18, 0x00 }, 13);
-	mipi_dsi_dcs_write_buffer(dsi, (u8[]){ 0xC3, 0x86, 0x46, 0x05, 0x05, 0x1C, 0x1C, 0x1D, 0x1D, 0x02, 0x1F, 0x1F, 0x1E, 0x1E, 0x0F, 0x0F, 0x0D, 0x0D, 0x13, 0x13, 0x11, 0x11, 0x00 }, 23);
-	mipi_dsi_dcs_write_buffer(dsi, (u8[]){ 0xC4, 0x07, 0x07, 0x04, 0x04, 0x1C, 0x1C, 0x1D, 0x1D, 0x02, 0x1F, 0x1F, 0x1E, 0x1E, 0x0E, 0x0E, 0x0C, 0x0C, 0x12, 0x12, 0x10, 0x10, 0x00 }, 23);
-	mipi_dsi_dcs_write_buffer(dsi, (u8[]){ 0xC6, 0x2A, 0x2A }, 3);
-	mipi_dsi_dcs_write_buffer(dsi, (u8[]){ 0xC8, 0x21, 0x00, 0x31, 0x42, 0x34, 0x16 }, 7);
-	mipi_dsi_dcs_write_buffer(dsi, (u8[]){ 0xCA, 0xCB, 0x43 }, 3);
-	mipi_dsi_dcs_write_buffer(dsi, (u8[]){ 0xCD, 0x0E, 0x4B, 0x4B, 0x20, 0x19, 0x6B, 0x06, 0xB3 }, 9);
-	mipi_dsi_dcs_write_buffer(dsi, (u8[]){ 0xD2, 0xE3, 0x2B, 0x38, 0x00 }, 5);
-	mipi_dsi_dcs_write_buffer(dsi, (u8[]){ 0xD4, 0x00, 0x01, 0x00, 0x0E, 0x04, 0x44, 0x08, 0x10, 0x00, 0x00, 0x00 }, 12);
-	mipi_dsi_dcs_write_buffer(dsi, (u8[]){ 0xE6, 0x80, 0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF }, 9);
-	mipi_dsi_dcs_write_buffer(dsi, (u8[]){ 0xF0, 0x12, 0x03, 0x20, 0x00, 0xFF }, 6);
-	mipi_dsi_dcs_write_buffer(dsi, (u8[]){ 0xF3, 0x00 }, 2);
-
-	mipi_dsi_dcs_exit_sleep_mode(dsi);
-
-	msleep(120);
+	ret = boe_enable(ctx);
+	if (ret < 0) {
+		dev_err(dev, "Failed to enable panel: %d\n", ret);
+		return ret;
+	}
 
 	ctx->prepared = true;
 	return 0;
 }
 
-static int boe_enable(struct drm_panel *panel)
-{
-	struct boe *ctx = panel_to_boe(panel);
-
-	if (ctx->enabled)
-		return 0;
-
-	mipi_dsi_dcs_set_display_on(ctx->dsi);
-
-	msleep(120);
-
-	ctx->enabled = true;
-	return 0;
-}
 
 static const struct drm_display_mode boe_default_mode = {
 	.clock		= 73500,
@@ -154,6 +176,9 @@ static const struct drm_display_mode boe_default_mode = {
 	.vsync_start	= 1280 + 2,
 	.vsync_end	= 1280 + 2 + 4,
 	.vtotal		= 1280 + 2 + 4 + 12,
+
+	.width_mm	= 135,
+	.height_mm	= 216,
 
 	.type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED,
 };
@@ -174,17 +199,18 @@ static int boe_get_modes(struct drm_panel *panel,
 	}
 
 	drm_mode_set_name(mode);
-	drm_mode_probed_add(connector, mode);
 
 	connector->display_info.bpc = 8;
-	connector->display_info.width_mm = 216;
-	connector->display_info.height_mm = 135;
+	connector->display_info.width_mm = mode->width_mm;
+	connector->display_info.height_mm = mode->height_mm;
 
 	/*
 	 * TODO: Remove once all drm drivers call
 	 * drm_connector_set_orientation_from_panel()
 	 */
 	drm_connector_set_panel_orientation(connector, ctx->orientation);
+
+	drm_mode_probed_add(connector, mode);
 
 	return 1;
 }
@@ -197,10 +223,8 @@ static enum drm_panel_orientation boe_get_orientation(struct drm_panel *panel)
 }
 
 static const struct drm_panel_funcs boe_funcs = {
-	.disable = boe_disable,
-	.unprepare = boe_unprepare,
 	.prepare = boe_prepare,
-	.enable = boe_enable,
+	.unprepare = boe_unprepare,
 	.get_modes = boe_get_modes,
 	.get_orientation = boe_get_orientation,
 };
@@ -220,8 +244,11 @@ static int boe_dsi_probe(struct mipi_dsi_device *dsi)
 	mipi_dsi_set_drvdata(dsi, ctx);
 	ctx->dsi = dsi;
 
-	drm_panel_init(&ctx->panel, &dsi->dev, &boe_funcs,
-		       DRM_MODE_CONNECTOR_DSI);
+	dsi->lanes = 4;
+	dsi->format = MIPI_DSI_FMT_RGB888;
+	dsi->mode_flags = MIPI_DSI_MODE_VIDEO_BURST |
+			  MIPI_DSI_MODE_NO_EOT_PACKET |
+			  MIPI_DSI_MODE_LPM;
 
 	ctx->power = devm_regulator_get(&dsi->dev, "power");
 	if (IS_ERR(ctx->power))
@@ -243,20 +270,18 @@ static int boe_dsi_probe(struct mipi_dsi_device *dsi)
 		return dev_err_probe(&dsi->dev, ret,
 				     "Failed to get orientation\n");
 
+	drm_panel_init(&ctx->panel, &dsi->dev, &boe_funcs,
+		       DRM_MODE_CONNECTOR_DSI);
+
 	ret = drm_panel_of_backlight(&ctx->panel);
 	if (ret)
 		return ret;
 
 	drm_panel_add(&ctx->panel);
 
-	dsi->lanes = 4;
-	dsi->format = MIPI_DSI_FMT_RGB888;
-	dsi->mode_flags = MIPI_DSI_MODE_VIDEO_BURST |
-			  MIPI_DSI_MODE_NO_EOT_PACKET |
-			  MIPI_DSI_MODE_LPM;
-
 	ret = mipi_dsi_attach(dsi);
 	if (ret < 0) {
+		dev_err_probe(&dsi->dev, ret, "Failed to attach panel to DSI host\n");
 		drm_panel_remove(&ctx->panel);
 		return ret;
 	}
@@ -290,4 +315,4 @@ module_mipi_dsi_driver(boe_driver);
 
 MODULE_AUTHOR("Alexander Warnecke <awarnecke002@hotmail.com>");
 MODULE_DESCRIPTION("BOE TH101MB31IG002-28A MIPI-DSI LCD panel");
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("GPL v2");
