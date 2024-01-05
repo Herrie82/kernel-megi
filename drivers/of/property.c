@@ -1266,6 +1266,7 @@ DEFINE_SIMPLE_PROP(pwms, "pwms", "#pwm-cells")
 DEFINE_SIMPLE_PROP(resets, "resets", "#reset-cells")
 DEFINE_SIMPLE_PROP(leds, "leds", NULL)
 DEFINE_SIMPLE_PROP(backlight, "backlight", NULL)
+DEFINE_SIMPLE_PROP(panel, "panel", NULL)
 DEFINE_SUFFIX_PROP(regulators, "-supply", NULL)
 DEFINE_SUFFIX_PROP(gpio, "-gpio", "#gpio-cells")
 
@@ -1325,27 +1326,6 @@ static struct device_node *parse_interrupts(struct device_node *np,
 	return of_irq_parse_one(np, index, &sup_args) ? NULL : sup_args.np;
 }
 
-static struct device_node *parse_allwinner_sram(struct device_node *np,
-						const char *prop_name, int index)
-{
-	struct device_node *sram_node;
-
-	if (!IS_ENABLED(CONFIG_SUNXI_SRAM))
-		return NULL;
-
-	if (strcmp(prop_name, "allwinner,sram"))
-		return NULL;
-
-	if (index > 0)
-		return NULL;
-
-	sram_node = of_parse_phandle(np, prop_name, 0);
-	sram_node = of_get_parent(sram_node);
-	sram_node = of_get_parent(sram_node);
-
-	return sram_node;
-}
-
 static const struct supplier_bindings of_supplier_bindings[] = {
 	{ .parse_prop = parse_clocks, },
 	{ .parse_prop = parse_interconnects, },
@@ -1375,12 +1355,12 @@ static const struct supplier_bindings of_supplier_bindings[] = {
 	{ .parse_prop = parse_resets, },
 	{ .parse_prop = parse_leds, },
 	{ .parse_prop = parse_backlight, },
+	{ .parse_prop = parse_panel, },
 	{ .parse_prop = parse_gpio_compat, },
 	{ .parse_prop = parse_interrupts, },
 	{ .parse_prop = parse_regulators, },
 	{ .parse_prop = parse_gpio, },
 	{ .parse_prop = parse_gpios, },
-	{ .parse_prop = parse_allwinner_sram, },
 	{}
 };
 

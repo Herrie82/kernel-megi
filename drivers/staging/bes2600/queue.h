@@ -40,8 +40,9 @@ struct bes2600_queue {
 	struct list_head	free_pool;
 	struct list_head	pending;
 	int			tx_locked_cnt;
+	bool			queue_all_lock;
 	int			*link_map_cache[CW12XX_MAX_VIFS];
-	bool			vif_overfull[CW12XX_MAX_VIFS];
+	bool			overfull;
 	spinlock_t		lock;
 	u8			queue_id;
 	u8			generation;

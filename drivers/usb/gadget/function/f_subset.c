@@ -308,12 +308,9 @@ geth_bind(struct usb_configuration *c, struct usb_function *f)
 	 * with list_for_each_entry, so we assume no race condition
 	 * with regard to gether_opts->bound access
 	 */
-	mutex_lock(&gether_opts->lock);
-	gether_set_gadget(gether_opts->net, cdev->gadget);
-	mutex_unlock(&gether_opts->lock);
-
 	if (!gether_opts->bound) {
 		mutex_lock(&gether_opts->lock);
+		gether_set_gadget(gether_opts->net, cdev->gadget);
 		status = gether_register_netdev(gether_opts->net);
 		mutex_unlock(&gether_opts->lock);
 		if (status)
@@ -370,9 +367,7 @@ geth_bind(struct usb_configuration *c, struct usb_function *f)
 	 * until we're activated via set_alt().
 	 */
 
-	DBG(cdev, "CDC Subset: %s speed IN/%s OUT/%s\n",
-			gadget_is_superspeed(c->cdev->gadget) ? "super" :
-			gadget_is_dualspeed(c->cdev->gadget) ? "dual" : "full",
+	DBG(cdev, "CDC Subset: IN/%s OUT/%s\n",
 			geth->port.in_ep->name, geth->port.out_ep->name);
 	return 0;
 
@@ -461,13 +456,8 @@ static void geth_free(struct usb_function *f)
 
 static void geth_unbind(struct usb_configuration *c, struct usb_function *f)
 {
-	struct f_gether_opts *opts = container_of(f->fi, struct f_gether_opts,
-						  func_inst);
-
 	geth_string_defs[0].id = 0;
 	usb_free_all_descriptors(f);
-
-	gether_set_gadget(opts->net, NULL);
 }
 
 static struct usb_function *geth_alloc(struct usb_function_instance *fi)

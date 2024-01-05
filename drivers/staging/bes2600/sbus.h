@@ -44,7 +44,7 @@ enum GPIO_WAKE_FLAG
 };
 
 struct sbus_ops {
-	int (*init)(struct sbus_priv *self, struct bes2600_common *ar);
+	int (*init)(struct sbus_priv *self, struct bes2600_common *core);
 	int (*sbus_memcpy_fromio)(struct sbus_priv *self, unsigned int addr,
 					void *dst, int count);
 	int (*sbus_memcpy_toio)(struct sbus_priv *self, unsigned int addr,
@@ -74,6 +74,7 @@ struct sbus_ops {
 	/* halt device to get debug information */
 	void (*halt_device)(struct sbus_priv *self);
 	bool (*wakeup_source)(struct sbus_priv *self);
+	int (*reboot)(struct sbus_priv *self);
 };
 
 #ifdef CONFIG_BES2600_WLAN_USB

@@ -13,7 +13,6 @@
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/of.h>
-#include <linux/of_device.h>
 #include <linux/regmap.h>
 #include <linux/sizes.h>
 #include <linux/slab.h>
@@ -944,6 +943,9 @@ static int qcom_llcc_probe(struct platform_device *pdev)
 	u32 sz;
 	u32 version;
 	struct regmap *regmap;
+
+	if (!IS_ERR(drv_data))
+		return -EBUSY;
 
 	drv_data = devm_kzalloc(dev, sizeof(*drv_data), GFP_KERNEL);
 	if (!drv_data) {

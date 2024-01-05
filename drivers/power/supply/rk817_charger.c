@@ -53,7 +53,6 @@ struct rk817_charger {
 	struct power_supply *chg_ps;
 	bool plugged_in;
 	bool battery_present;
-	bool apply_ilim;
 
 	/*
 	 * voltage_k and voltage_b values are used to calibrate the ADC
@@ -557,72 +556,11 @@ static int rk817_bat_get_prop(struct power_supply *ps,
 	return 0;
 }
 
-static const int rk817_usb_input_current_limits[] = {
-	1, 80000,
-	0, 450000,
-	2, 850000,
-	3, 1500000,
-	4, 1750000,
-	5, 2000000,
-	6, 2500000,
-	7, 3000000,
-};
-
-static int rk817_usb_set_input_current_max(struct rk817_charger *cg,
-					   int val)
-{
-	int ret, i;
-	
-	for (i = ARRAY_SIZE(rk817_usb_input_current_limits) / 2 - 1; i > 0; i--) {
-		if (val >= rk817_usb_input_current_limits[2 * i + 1])
-			break;
-	}
-
-	dev_info(cg->dev, "applying input current limit %d mA\n",
-		 rk817_usb_input_current_limits[2 * i + 1] / 1000);
-
-	ret = regmap_write_bits(cg->rk808->regmap, RK817_PMIC_CHRG_IN,
-			        RK817_USB_ILIM_SEL,
-			        rk817_usb_input_current_limits[2 * i]);
-	if (ret)
-		dev_err(cg->dev,
-			"USB input current limit setting failed (%d)\n", ret);
-
-	return ret;
-}
-
-static int rk817_usb_get_input_current_max(struct rk817_charger *cg,
-					   int *val)
-{
-	unsigned reg;
-	int ret;
-
-	ret = regmap_read(cg->rk808->regmap, RK817_PMIC_CHRG_IN, &reg);
-	if (ret) {
-		dev_err(cg->dev,
-			"USB input current limit getting failed (%d)\n", ret);
-		return ret;
-	}
-
-	reg &= RK817_USB_ILIM_SEL;
-
-	for (int i = 0; i < ARRAY_SIZE(rk817_usb_input_current_limits) / 2; i++) {
-		int r = rk817_usb_input_current_limits[2 * i];
-		if (r == reg) {
-			*val = rk817_usb_input_current_limits[2 * i + 1];
-			break;
-		}
-	}
-
-	return 0;
-}
-
 static int rk817_chg_get_prop(struct power_supply *ps,
 			      enum power_supply_property prop,
 			      union power_supply_propval *val)
 {
 	struct rk817_charger *charger = power_supply_get_drvdata(ps);
-	int ret;
 
 	switch (prop) {
 	case POWER_SUPPLY_PROP_ONLINE:
@@ -639,11 +577,6 @@ static int rk817_chg_get_prop(struct power_supply *ps,
 	case POWER_SUPPLY_PROP_VOLTAGE_AVG:
 		val->intval = charger->charger_input_volt_avg_uv;
 		break;
-	case POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT:
-		ret = rk817_usb_get_input_current_max(charger, &val->intval);
-		if (ret)
-			return ret;
-		break;
 	/*
 	 * While it's possible that other implementations could use different
 	 * USB types, the current implementation for this PMIC (the Odroid Go
@@ -656,58 +589,7 @@ static int rk817_chg_get_prop(struct power_supply *ps,
 		return -EINVAL;
 	}
 	return 0;
-}
 
-static int rk817_chg_set_prop(struct power_supply *ps,
-			      enum power_supply_property prop,
-			      const union power_supply_propval *val)
-{
-	struct rk817_charger *charger = power_supply_get_drvdata(ps);
-	int ret;
-
-	switch (prop) {
-	case POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT:
-		ret = rk817_usb_set_input_current_max(charger, val->intval);
-		if (ret)
-			return ret;
-		break;
-	default:
-		return -EINVAL;
-	}
-	return 0;
-
-}
-
-/* Sync the input-current-limit with our parent supply (if we have one) */
-static void rk817_usb_power_external_power_changed(struct power_supply *psy)
-{
-        struct rk817_charger *charger = power_supply_get_drvdata(psy);
-	union power_supply_propval val;
-	int ret;
-
-	ret = power_supply_get_property_from_supplier(charger->chg_ps,
-						      POWER_SUPPLY_PROP_CURRENT_MAX,
-						      &val);
-	if (ret)
-		return;
-
-	/*
-	 * We only want to start applying input current limit after we get first
-	 * non-0 value from the supplier. Until then, we keep the limit applied
-	 * by the bootloader. If we lower the limit before the charger is properly
-	 * detected, we risk boot failure due to insufficient power.
-	 */
-	if (!charger->apply_ilim) {
-		if (!val.intval)
-			return;
-
-		charger->apply_ilim = true;
-	}
-
-	if (val.intval < 500000)
-		val.intval = 500000;
-
-	rk817_chg_set_prop(charger->chg_ps, POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT, &val);
 }
 
 static irqreturn_t rk817_plug_in_isr(int irq, void *cg)
@@ -750,22 +632,20 @@ static irqreturn_t rk817_plug_out_isr(int irq, void *cg)
 	regmap_write_bits(rk808->regmap, RK817_PMIC_CHRG_IN, RK817_USB_VLIM_EN,
 			  (0x01 << 7));
 
+	/*
+	 * Set average USB input current limit to 1.5A and enable USB current
+	 * input limit.
+	 */
+	regmap_write_bits(rk808->regmap, RK817_PMIC_CHRG_IN,
+			  RK817_USB_ILIM_SEL, 0x03);
+	regmap_write_bits(rk808->regmap, RK817_PMIC_CHRG_IN, RK817_USB_ILIM_EN,
+			  (0x01 << 3));
+
 	rk817_read_props(charger);
 
 	dev_dbg(charger->dev, "Power Cord Removed\n");
 
 	return IRQ_HANDLED;
-}
-
-static int rk817_charger_prop_writeable(struct power_supply *psy,
-					enum power_supply_property psp)
-{
-	switch (psp) {
-	case POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT:
-		return 1;
-	default:
-		return 0;
-	}
 }
 
 static enum power_supply_property rk817_bat_props[] = {
@@ -791,7 +671,6 @@ static enum power_supply_property rk817_chg_props[] = {
 	POWER_SUPPLY_PROP_VOLTAGE_MAX_DESIGN,
 	POWER_SUPPLY_PROP_VOLTAGE_MIN_DESIGN,
 	POWER_SUPPLY_PROP_VOLTAGE_AVG,
-	POWER_SUPPLY_PROP_INPUT_CURRENT_LIMIT,
 };
 
 static enum power_supply_usb_type rk817_usb_type[] = {
@@ -814,10 +693,7 @@ static const struct power_supply_desc rk817_chg_desc = {
 	.num_usb_types = ARRAY_SIZE(rk817_usb_type),
 	.properties = rk817_chg_props,
 	.num_properties = ARRAY_SIZE(rk817_chg_props),
-	.property_is_writeable	= rk817_charger_prop_writeable,
 	.get_property = rk817_chg_get_prop,
-	.set_property = rk817_chg_set_prop,
-	.external_power_changed	= rk817_usb_power_external_power_changed,
 };
 
 static int rk817_read_battery_nvram_values(struct rk817_charger *charger)
@@ -1149,6 +1025,10 @@ static int rk817_battery_init(struct rk817_charger *charger,
 	 * Set average USB input current limit to 1.5A and enable USB current
 	 * input limit.
 	 */
+	regmap_write_bits(rk808->regmap, RK817_PMIC_CHRG_IN,
+			  RK817_USB_ILIM_SEL, 0x03);
+	regmap_write_bits(rk808->regmap, RK817_PMIC_CHRG_IN, RK817_USB_ILIM_EN,
+			  (0x01 << 3));
 
 	return 0;
 }
@@ -1163,6 +1043,13 @@ static void rk817_charging_monitor(struct work_struct *work)
 
 	/* Run every 8 seconds like the BSP driver did. */
 	queue_delayed_work(system_wq, &charger->work, msecs_to_jiffies(8000));
+}
+
+static void rk817_cleanup_node(void *data)
+{
+	struct device_node *node = data;
+
+	of_node_put(node);
 }
 
 static int rk817_charger_probe(struct platform_device *pdev)
@@ -1181,11 +1068,13 @@ static int rk817_charger_probe(struct platform_device *pdev)
 	if (!node)
 		return -ENODEV;
 
+	ret = devm_add_action_or_reset(&pdev->dev, rk817_cleanup_node, node);
+	if (ret)
+		return ret;
+
 	charger = devm_kzalloc(&pdev->dev, sizeof(*charger), GFP_KERNEL);
-	if (!charger) {
-		of_node_put(node);
+	if (!charger)
 		return -ENOMEM;
-	}
 
 	charger->rk808 = rk808;
 
@@ -1241,13 +1130,13 @@ static int rk817_charger_probe(struct platform_device *pdev)
 	charger->bat_ps = devm_power_supply_register(&pdev->dev,
 						     &rk817_bat_desc, &pscfg);
 	if (IS_ERR(charger->bat_ps))
-		return dev_err_probe(dev, PTR_ERR(charger->bat_ps),
+		return dev_err_probe(dev, -EINVAL,
 				     "Battery failed to probe\n");
 
 	charger->chg_ps = devm_power_supply_register(&pdev->dev,
 						     &rk817_chg_desc, &pscfg);
 	if (IS_ERR(charger->chg_ps))
-		return dev_err_probe(dev, PTR_ERR(charger->chg_ps),
+		return dev_err_probe(dev, -EINVAL,
 				     "Charger failed to probe\n");
 
 	ret = power_supply_get_battery_info(charger->bat_ps,
@@ -1315,8 +1204,6 @@ static int rk817_charger_probe(struct platform_device *pdev)
 	/* Force the first update immediately. */
 	mod_delayed_work(system_wq, &charger->work, 0);
 
-	rk817_usb_power_external_power_changed(charger->chg_ps);
-
 	return 0;
 }
 
@@ -1333,3 +1220,4 @@ MODULE_DESCRIPTION("Battery power supply driver for RK817 PMIC");
 MODULE_AUTHOR("Maya Matuszczyk <maccraft123mc@gmail.com>");
 MODULE_AUTHOR("Chris Morgan <macromorgan@hotmail.com>");
 MODULE_LICENSE("GPL");
+MODULE_ALIAS("platform:rk817-charger");

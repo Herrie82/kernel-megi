@@ -1316,7 +1316,7 @@ void bes2600_tx_confirm_cb(struct bes2600_common *hw_priv,
 	} else if ((hw_priv->start_stop_tsm.start) &&
 		(arg->status == WSM_STATUS_SUCCESS)) {
 		if (queue_id == hw_priv->tsm_info.ac) {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 0, 0)
 			struct timespec64 tmval;
 			ktime_get_real_ts64(&tmval);
 #else
@@ -1326,7 +1326,7 @@ void bes2600_tx_confirm_cb(struct bes2600_common *hw_priv,
 			pkt_delay = hw_priv->start_stop_tsm.packetization_delay;
 			if (hw_priv->tsm_info.sta_roamed &&
 			    !hw_priv->tsm_info.use_rx_roaming) {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 0, 0)
 				hw_priv->tsm_info.roam_delay = tmval.tv_nsec / 1000 -
 				hw_priv->tsm_info.txconf_timestamp_vo;
 #else
@@ -1340,7 +1340,7 @@ void bes2600_tx_confirm_cb(struct bes2600_common *hw_priv,
 				hw_priv->tsm_info.roam_delay);
 				hw_priv->tsm_info.sta_roamed = 0;
 			}
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 0, 0)
 			hw_priv->tsm_info.rx_timestamp_vo = tmval.tv_nsec / 1000;
 #else
 			hw_priv->tsm_info.rx_timestamp_vo = tmval.tv_usec;
@@ -1654,7 +1654,7 @@ void bes2600_rx_cb(struct bes2600_vif *priv,
 	if (hw_priv->start_stop_tsm.start) {
 		unsigned queue_id = skb_get_queue_mapping(skb);
 		if (queue_id == 0) {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 0, 0)
 			struct timespec64 tmval;
 			ktime_get_real_ts64(&tmval);
 #else
@@ -1663,7 +1663,7 @@ void bes2600_rx_cb(struct bes2600_vif *priv,
 #endif
 			if (hw_priv->tsm_info.sta_roamed &&
 				hw_priv->tsm_info.use_rx_roaming) {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 0, 0)
 				hw_priv->tsm_info.roam_delay = tmval.tv_nsec / 1000 -
 					hw_priv->tsm_info.rx_timestamp_vo;
 #else
@@ -1674,7 +1674,7 @@ void bes2600_rx_cb(struct bes2600_vif *priv,
 				"roam_delay = %u\n", hw_priv->tsm_info.roam_delay);
 				hw_priv->tsm_info.sta_roamed = 0;
 			}
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 0, 0)
 			hw_priv->tsm_info.rx_timestamp_vo = tmval.tv_nsec / 1000;
 #else
 			hw_priv->tsm_info.rx_timestamp_vo = tmval.tv_usec;

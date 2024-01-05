@@ -19,7 +19,6 @@
 #include <linux/vmalloc.h>
 #include <linux/random.h>
 #include <linux/sched.h>
-#include <linux/of.h>
 #include <net/mac80211.h>
 
 #include "bes2600.h"
@@ -51,9 +50,29 @@ MODULE_ALIAS("bes2600");
 MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);
 #endif
 
+static u8 bes2600_mac_template[ETH_ALEN] = {
+#if (GET_MAC_ADDR_METHOD == 2)||(GET_MAC_ADDR_METHOD == 3)
+	0x00, 0x12, 0x34, 0x00, 0x00, 0x00
+#else
+	0x02, 0x80, 0xe1, 0x00, 0x00, 0x00 /* To use macaddr of customers */
+#endif
+};
+
+#if (GET_MAC_ADDR_METHOD == 2) /* To use macaddr and PS Mode of customers */
+#ifndef PATH_WIFI_MACADDR
+#define PATH_WIFI_MACADDR		"/efs/wifi/.mac.info"
+#endif
+#elif (GET_MAC_ADDR_METHOD == 3)
+#define PATH_WIFI_MACADDR_TMP	"/data/.mac.info"
+#endif
+
 #ifdef CUSTOM_FEATURE
 #define PATH_WIFI_PSM_INFO		"/data/.psm.info"
 static int savedpsm = 0;
+#endif
+
+#if defined(CUSTOM_FEATURE) ||(GET_MAC_ADDR_METHOD == 2) || (GET_MAC_ADDR_METHOD == 3)
+int access_file(char *path, char *buffer, int size, int isRead);
 #endif
 
 /* TODO: use rates and channels from the device */
@@ -134,7 +153,7 @@ static struct ieee80211_channel bes2600_2ghz_chantable[] = {
 };
 
 #ifdef CONFIG_BES2600_5GHZ_SUPPORT
-#if 1
+#if 0
 static struct ieee80211_channel bes2600_5ghz_chantable[] = {
 	CHAN5G(34, 0),		CHAN5G(36, 0),
 	CHAN5G(38, 0),		CHAN5G(40, 0),
@@ -256,11 +275,11 @@ static const struct ieee80211_iface_combination bes2600_if_comb[] = {
 static const struct ieee80211_ops bes2600_ops = {
 	.start			= bes2600_start,
 	.stop			= bes2600_stop,
-	.wake_tx_queue		= ieee80211_handle_wake_tx_queue,
 	.add_interface		= bes2600_add_interface,
 	.remove_interface	= bes2600_remove_interface,
 	.change_interface	= bes2600_change_interface,
 	.tx			= bes2600_tx,
+	.wake_tx_queue		= ieee80211_handle_wake_tx_queue,
 	.hw_scan		= bes2600_hw_scan,
 	.cancel_hw_scan         = bes2600_cancel_hw_scan,
 #ifdef ROAM_OFFLOAD
@@ -305,58 +324,77 @@ static const struct wiphy_wowlan_support bes2600_wowlan_support = {
 #endif
 
 #ifdef CONFIG_BES2600_WAPI_SUPPORT
-// static void bes2600_init_wapi_cipher(struct ieee80211_hw *hw)
-// {
-// 	static struct ieee80211_cipher_scheme wapi_cs = {
-// 		.cipher = WLAN_CIPHER_SUITE_SMS4,
-// 		.iftype = BIT(NL80211_IFTYPE_STATION),
-// 		.hdr_len = 18,
-// 		.pn_len = 16,
-// 		.pn_off = 2,
-// 		.key_idx_off = 0,
-// 		.key_idx_mask = 0x01,
-// 		.key_idx_shift = 0,
-// 		.mic_len = 16
-// 	};
+static void bes2600_init_wapi_cipher(struct ieee80211_hw *hw)
+{
+	static struct ieee80211_cipher_scheme wapi_cs = {
+		.cipher = WLAN_CIPHER_SUITE_SMS4,
+		.iftype = BIT(NL80211_IFTYPE_STATION),
+		.hdr_len = 18,
+		.pn_len = 16,
+		.pn_off = 2,
+		.key_idx_off = 0,
+		.key_idx_mask = 0x01,
+		.key_idx_shift = 0,
+		.mic_len = 16
+	};
 
-// 	hw->cipher_schemes = &wapi_cs;
-// 	hw->n_cipher_schemes = 1;
-// }
+	hw->cipher_schemes = &wapi_cs;
+	hw->n_cipher_schemes = 1;
+}
 #endif
 
 static void bes2600_get_base_mac(struct bes2600_common *hw_priv)
 {
-	struct device_node *np;
-	const u8* addr = NULL;
-	bool ok = false;
-	int len;
+#if (GET_MAC_ADDR_METHOD == 1)
+	u8 fixed_mac[ETH_ALEN];
+#endif
+#if (GET_MAC_ADDR_METHOD == 2)||(GET_MAC_ADDR_METHOD == 3) /* To use macaddr of customers */
+	char readmac[17+1]={0,};
+#endif
+	memcpy(hw_priv->addresses[0].addr, bes2600_mac_template, ETH_ALEN);
 
-	np = of_find_compatible_node(NULL, NULL, "bestechnic,bes2600");
-	if (np) {
-		addr = of_get_property(np, "local-mac-address", &len);
-		if (addr && len == ETH_ALEN) {
-			memcpy(hw_priv->addresses[0].addr, addr, ETH_ALEN);
-			ok = true;
-		} else {
-			pr_err("bestechnic,bes2600 device node does not have valid local-mac-address property, random mac will be used!\n");
-		}
-
-		of_node_put(np);
-	} else {
-		pr_err("bestechnic,bes2600 device node NOT found, random mac will be used!\n");
+#if (GET_MAC_ADDR_METHOD == 1)
+	rockchip_wifi_mac_addr(fixed_mac);
+	memcpy(hw_priv->addresses[0].addr, fixed_mac, ETH_ALEN * sizeof(u8));
+	bes2600_info(BES2600_DBG_INIT, "get fixed mac address from flash=[%02x:%02x:%02x:%02x:%02x:%02x]\n", fixed_mac[0], fixed_mac[1],
+				fixed_mac[2], fixed_mac[3], fixed_mac[4], fixed_mac[5]);
+	if(fixed_mac[0] & (0x01)){
+		bes2600_warn(BES2600_DBG_INIT, "The MAC address is not suitable for unicast, change to random MAC\n");
+		memcpy(hw_priv->addresses[0].addr, bes2600_mac_template, ETH_ALEN);
 	}
 
-	if (!ok) {
-		get_random_bytes(hw_priv->addresses[0].addr, ETH_ALEN);
+#elif (GET_MAC_ADDR_METHOD == 2) /* To use macaddr of customers */
+	if(access_file(PATH_WIFI_MACADDR,readmac,17,1) > 0) {
+		sscanf(readmac,"%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
+								(u8 *)&hw_priv->addresses[0].addr[0],
+								(u8 *)&hw_priv->addresses[0].addr[1],
+								(u8 *)&hw_priv->addresses[0].addr[2],
+								(u8 *)&hw_priv->addresses[0].addr[3],
+								(u8 *)&hw_priv->addresses[0].addr[4],
+								(u8 *)&hw_priv->addresses[0].addr[5]);
 	}
-
-	hw_priv->addresses[0].addr[0] &= ~1u;
+#elif (GET_MAC_ADDR_METHOD == 3)
+	if(access_file(PATH_WIFI_MACADDR_TMP,readmac,17,1) > 0) {
+		sscanf(readmac,"%02X:%02X:%02X:%02X:%02X:%02X",
+								(u8 *)&hw_priv->addresses[0].addr[0],
+								(u8 *)&hw_priv->addresses[0].addr[1],
+								(u8 *)&hw_priv->addresses[0].addr[2],
+								(u8 *)&hw_priv->addresses[0].addr[3],
+								(u8 *)&hw_priv->addresses[0].addr[4],
+								(u8 *)&hw_priv->addresses[0].addr[5]);
+	}
+#endif
+	if (hw_priv->addresses[0].addr[3] == 0 &&
+	    hw_priv->addresses[0].addr[4] == 0 &&
+	    hw_priv->addresses[0].addr[5] == 0)
+		get_random_bytes(&hw_priv->addresses[0].addr[3], 3);
 }
 
 static void bes2600_derive_mac(struct bes2600_common *hw_priv)
 {
 	memcpy(hw_priv->addresses[1].addr, hw_priv->addresses[0].addr, ETH_ALEN);
-	hw_priv->addresses[1].addr[5] = hw_priv->addresses[0].addr[5] + 1;
+	hw_priv->addresses[1].addr[5] =
+			hw_priv->addresses[0].addr[5] + 1;
 
 #ifdef P2P_MULTIVIF
 	memcpy(hw_priv->addresses[2].addr, hw_priv->addresses[1].addr,
@@ -447,6 +485,10 @@ struct ieee80211_hw *bes2600_init_common(size_t hw_priv_data_len)
 	hw->wiphy->flags |= WIPHY_FLAG_AP_UAPSD;
 #endif /* CONFIG_BES2600_USE_STE_EXTENSIONS */
 
+#ifdef PROBE_RESP_EXTRA_IE
+	hw->wiphy->flags |= WIPHY_FLAG_AP_PROBE_RESP_OFFLOAD;
+#endif
+
 #if defined(CONFIG_BES2600_DISABLE_BEACON_HINTS)
 	hw->wiphy->flags |= WIPHY_FLAG_DISABLE_BEACON_HINTS;
 #endif
@@ -498,7 +540,7 @@ struct ieee80211_hw *bes2600_init_common(size_t hw_priv_data_len)
 #ifdef CONFIG_BES2600_WAPI_SUPPORT
 	hw_priv->last_ins_wapi_usk_id = -1;
 	hw_priv->last_del_wapi_usk_id = -1;
-	// bes2600_init_wapi_cipher(hw);
+	bes2600_init_wapi_cipher(hw);
 #endif
 
 	SET_IEEE80211_PERM_ADDR(hw, hw_priv->addresses[0].addr);
@@ -644,7 +686,11 @@ void bes2600_free_common(struct ieee80211_hw *dev)
 	/* struct bes2600_common *hw_priv = dev->priv; */
 #ifdef CONFIG_BES2600_TESTMODE
 	struct bes2600_common *hw_priv = dev->priv;
-	kfree(hw_priv->test_frame.data);
+	if (hw_priv->test_frame.data) {
+		kfree(hw_priv->test_frame.data);
+		hw_priv->test_frame.data = NULL;
+		hw_priv->test_frame.len = 0;
+	}
 #endif /* CONFIG_BES2600_TESTMODE */
 
 #ifdef CONFIG_BES2600_VENDOR_CMD
@@ -803,7 +849,6 @@ int bes2600_core_probe(const struct sbus_ops *sbus_ops,
 	struct bes2600_common *hw_priv;
 
 #if defined(CONFIG_BES2600_WLAN_USB)
-	int if_id;
 
 #ifdef CUSTOM_FEATURE/* To control ps mode */
 	struct wsm_operational_mode mode = {
@@ -859,72 +904,15 @@ int bes2600_core_probe(const struct sbus_ops *sbus_ops,
 	if (err)
 		goto err2;
 
-	if (bes2600_chrdev_get_fw_type() == BES2600_FW_TYPE_BT) {
-	} else if (bes2600_chrdev_get_fw_type() == BES2600_FW_TYPE_WIFI_NO_SIGNAL) {
-#ifdef CONFIG_BES2600_WLAN_BES
+	if (bes2600_chrdev_get_fw_type() == BES2600_FW_TYPE_WIFI_NO_SIGNAL) {
 		*pself = dev->priv;
-#endif
-#if defined(CONFIG_BES2600_WLAN_SDIO) || defined(CONFIG_BES2600_WLAN_SPI)
 		if (bes2600_wifi_start(hw_priv))
 			goto err3;
-#else
-		mdelay(2000);
-		if (wait_event_interruptible_timeout(hw_priv->wsm_startup_done,
-				hw_priv->wsm_caps.firmwareReady, 10*HZ) <= 0) {
-			bes2600_info(BES2600_DBG_INIT, "startup timeout!!!\n");
-			err = -ENODEV;
-			goto err3;
-		}
-#endif
-#if defined(CONFIG_BES2600_WLAN_USB)
-	} else {
-		mdelay(2000);
-
-	/*
-		hw_priv->sbus_ops->lock(hw_priv->sbus_priv);
-		WARN_ON(hw_priv->sbus_ops->set_block_size(hw_priv->sbus_priv,
-				SDIO_BLOCK_SIZE));
-		hw_priv->sbus_ops->unlock(hw_priv->sbus_priv);
-
-		cw12xx_set_ifce_comb(hw_priv, dev);
-
-		hw_priv->sbus_ops->lock(hw_priv->sbus_priv);
-		WARN_ON(hw_priv->sbus_ops->set_block_size(hw_priv->sbus_priv,
-			SDIO_BLOCK_SIZE));
-		hw_priv->sbus_ops->unlock(hw_priv->sbus_priv);
-	*/
-
-		if (wait_event_interruptible_timeout(hw_priv->wsm_startup_done,
-					hw_priv->wsm_caps.firmwareReady, 10*HZ) <= 0) {
-
-			/* TODO: Needs to find how to reset device */
-			/*       in QUEUE mode properly.           */
-			bes2600_info(BES2600_DBG_INIT, "startup timeout!!!\n");
-			err = -ENODEV;
-			goto err3;
-		}
-	/*
-		WARN_ON(bes2600_reg_write_16(hw_priv, ST90TDS_CONTROL_REG_ID,
-						ST90TDS_CONT_WUP_BIT));
-
-		if (bes2600_reg_read_16(hw_priv,ST90TDS_CONTROL_REG_ID, &ctrl_reg))
-			WARN_ON(bes2600_reg_read_16(hw_priv,ST90TDS_CONTROL_REG_ID,
-							&ctrl_reg));
-
-		WARN_ON(!(ctrl_reg & ST90TDS_CONT_RDY_BIT));
-	*/
-		for (if_id = 0; if_id < 2; if_id++) {
-			/* Set low-power mode. */
-			/* Enable multi-TX confirmation */
-			WARN_ON(wsm_use_multi_tx_conf(hw_priv, true, if_id));
-		}
-#endif
 	}
 
 	err = bes2600_register_common(dev);
-	if (err) {
+	if (err)
 		goto err3;
-	}
 
 	*pself = dev->priv;
 	return err;
@@ -938,6 +926,7 @@ err2:
 err1:
 	bes2600_free_common(dev);
 err:
+	*pself = NULL;
 	return err;
 }
 
@@ -948,7 +937,7 @@ void bes2600_core_release(struct bes2600_common *self)
 	return;
 }
 
-#if defined(CUSTOM_FEATURE) /* To use macaddr and ps mode of customers */
+#if defined(CUSTOM_FEATURE) ||(GET_MAC_ADDR_METHOD == 2) || (GET_MAC_ADDR_METHOD == 3) /* To use macaddr and ps mode of customers */
 int access_file(char *path, char *buffer, int size, int isRead)
 {
 	int ret=0;
@@ -965,15 +954,12 @@ int access_file(char *path, char *buffer, int size, int isRead)
 		return -1;
 	}
 
-	if(isRead)
-	{
+	if (isRead) {
 			fp->f_pos = 0;
 			set_fs(KERNEL_DS);
 			ret = vfs_read(fp,buffer,size,&fp->f_pos);
 			set_fs(old_fs);
-	}
-	else
-	{
+	} else {
 			fp->f_pos = 0;
 			set_fs(KERNEL_DS);
 			ret = vfs_write(fp,buffer,size,&fp->f_pos);
@@ -986,21 +972,20 @@ int access_file(char *path, char *buffer, int size, int isRead)
 }
 #endif
 
-#ifdef CONFIG_BES2600_WLAN_BES
 int bes2600_wifi_start(struct bes2600_common *hw_priv)
 {
 	int ret = 0, if_id;
-#ifndef CONFIG_BES2600_WLAN_USB
-	if(hw_priv->sbus_ops->gpio_wake) {
+
+	if (hw_priv->sbus_ops->gpio_wake) {
 		hw_priv->sbus_ops->gpio_wake(hw_priv->sbus_priv, GPIO_WAKE_FLAG_WIFI_ON);
 	}
 
 	if (hw_priv->sbus_ops->sbus_active &&
 		WARN_ON((ret = hw_priv->sbus_ops->sbus_active(hw_priv->sbus_priv, SUBSYSTEM_WIFI))))
 		goto err;
-#endif
+
 	if (wait_event_interruptible_timeout(hw_priv->wsm_startup_done,
-			hw_priv->wsm_caps.firmwareReady, 10*HZ) <= 0) {
+			hw_priv->wsm_caps.firmwareReady, 10 * HZ) <= 0) {
 
 		/* TODO: Needs to find how to reset device */
 		/*       in QUEUE mode properly.           */
@@ -1020,7 +1005,7 @@ int bes2600_wifi_start(struct bes2600_common *hw_priv)
 	bes2600_pwr_start(hw_priv);
 
 err:
-	if(hw_priv->sbus_ops->gpio_sleep) {
+	if (hw_priv->sbus_ops->gpio_sleep) {
 		hw_priv->sbus_ops->gpio_sleep(hw_priv->sbus_priv, GPIO_WAKE_FLAG_WIFI_ON);
 	}
 
@@ -1073,4 +1058,3 @@ err:
 
 	return ret;
 }
-#endif

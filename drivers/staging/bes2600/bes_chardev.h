@@ -62,6 +62,7 @@ int bes2600_chrdev_check_system_close(void);
 int bes2600_chrdev_do_system_close(const struct sbus_ops *sbus_ops, struct sbus_priv *priv);
 void bes2600_chrdev_wakeup_bt(void);
 void bes2600_chrdev_wifi_force_close(struct bes2600_common *hw_priv, bool halt_dev);
+void bes2600_chrdev_usb_remove(struct bes2600_common *hw_priv);
 
 /* get and set internal state */
 bool bes2600_chrdev_is_wifi_opened(void);
@@ -75,17 +76,11 @@ bool bes2600_chrdev_is_bus_error(void);
 void bes2600_chrdev_start_bus_probe(void);
 void bes2600_chrdev_bus_probe_notify(void);
 
-#if defined(CONFIG_BES2600_WLAN_SDIO) || defined(CONFIG_BES2600_WLAN_SPI)
 /* set wifi wakeup state */
 void bes2600_chrdev_wifi_update_wakeup_reason(u16 reason, u16 port);
 void bes2600_chrdev_wakeup_by_event_set(enum wakeup_event wakeup_event);
 int bes2600_chrdev_wakeup_by_event_get(void);
-#else
-/* set wifi wakeup state */
-static inline void bes2600_chrdev_wifi_update_wakeup_reason(u16 reason, u16 port) { }
-static inline void bes2600_chrdev_wakeup_by_event_set(enum wakeup_event wakeup_event) { }
-static inline int bes2600_chrdev_wakeup_by_event_get(void) { return 0; }
-#endif
+
 /* init and deinit module */
 int bes2600_chrdev_init(struct sbus_ops *ops);
 void bes2600_chrdev_free(void);
@@ -96,4 +91,4 @@ u8* bes2600_alloc_dpd_log_buffer(u16 len);
 void bes2600_get_dpd_log(char **data, size_t *len);
 #endif
 
-#endif
+#endif /* __BES_CHARDEV_H__ */

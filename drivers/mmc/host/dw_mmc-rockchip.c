@@ -10,7 +10,6 @@
 #include <linux/of_address.h>
 #include <linux/mmc/slot-gpio.h>
 #include <linux/pm_runtime.h>
-#include <linux/regulator/consumer.h>
 #include <linux/slab.h>
 
 #include "dw_mmc.h"
@@ -372,15 +371,13 @@ static int dw_mci_rockchip_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int dw_mci_rockchip_remove(struct platform_device *pdev)
+static void dw_mci_rockchip_remove(struct platform_device *pdev)
 {
 	pm_runtime_get_sync(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
 	pm_runtime_put_noidle(&pdev->dev);
 
 	dw_mci_pltfm_remove(pdev);
-
-	return 0;
 }
 
 static const struct dev_pm_ops dw_mci_rockchip_dev_pm_ops = {
@@ -391,20 +388,9 @@ static const struct dev_pm_ops dw_mci_rockchip_dev_pm_ops = {
 			   NULL)
 };
 
-static void dw_mci_rockchip_shutdown(struct platform_device *pdev)
-{
-	struct dw_mci *host = dev_get_drvdata(&pdev->dev);
-	struct mmc_host *mmc = host->slot->mmc;
-
-	if (!IS_ERR(mmc->supply.vqmmc) && !(host->vqmmc_enabled))
-		if(!regulator_enable(mmc->supply.vqmmc))
-			host->vqmmc_enabled = true;
-}
-
 static struct platform_driver dw_mci_rockchip_pltfm_driver = {
 	.probe		= dw_mci_rockchip_probe,
-	.remove		= dw_mci_rockchip_remove,
-	.shutdown	= dw_mci_rockchip_shutdown,
+	.remove_new	= dw_mci_rockchip_remove,
 	.driver		= {
 		.name		= "dwmmc_rockchip",
 		.probe_type	= PROBE_PREFER_ASYNCHRONOUS,

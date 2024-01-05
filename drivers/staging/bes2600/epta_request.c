@@ -625,9 +625,9 @@ static void coex_wifi_bt_ts_thread(struct work_struct *work)
 	spin_lock(&hw_priv->coex_event_lock);
 	while (!list_empty(&hw_priv->coex_event_list)) {
 		coex_event = list_first_entry(&hw_priv->coex_event_list, COEX_WIFI_BT_TS_T, node);
+		list_del(&coex_event->node);
 		spin_unlock(&hw_priv->coex_event_lock);
 		coex_wifi_bt_ts_cb(hw_priv, coex_event);
-		list_del(&coex_event->node);
 		kfree(coex_event);
 
 		spin_lock(&hw_priv->coex_event_lock);

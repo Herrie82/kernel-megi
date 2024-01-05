@@ -269,15 +269,6 @@ static const struct resource axp20x_ac_power_supply_resources[] = {
 	DEFINE_RES_IRQ_NAMED(AXP20X_IRQ_ACIN_OVER_V, "ACIN_OVER_V"),
 };
 
-static const struct resource axp20x_battery_resources[] = {
-	DEFINE_RES_IRQ_NAMED(AXP20X_IRQ_BATT_PLUGIN, "BATT_PLUGIN"),
-	DEFINE_RES_IRQ_NAMED(AXP20X_IRQ_BATT_REMOVAL, "BATT_REMOVAL"),
-	DEFINE_RES_IRQ_NAMED(AXP20X_IRQ_BATT_ENT_ACT_MODE, "BATT_HEALTH_DEAD"),
-	DEFINE_RES_IRQ_NAMED(AXP20X_IRQ_BATT_EXIT_ACT_MODE, "BATT_HEALTH_GOOD"),
-	DEFINE_RES_IRQ_NAMED(AXP20X_IRQ_CHARG, "BATT_CHARGING"),
-	DEFINE_RES_IRQ_NAMED(AXP20X_IRQ_CHARG_DONE, "BATT_CHARGING_DONE"),
-};
-
 static const struct resource axp20x_pek_resources[] = {
 	DEFINE_RES_IRQ_NAMED(AXP20X_IRQ_PEK_RIS_EDGE, "PEK_DBR"),
 	DEFINE_RES_IRQ_NAMED(AXP20X_IRQ_PEK_FAL_EDGE, "PEK_DBF"),
@@ -299,8 +290,6 @@ static const struct resource axp22x_usb_power_supply_resources[] = {
 static const struct resource axp803_usb_power_supply_resources[] = {
 	DEFINE_RES_IRQ_NAMED(AXP803_IRQ_VBUS_PLUGIN, "VBUS_PLUGIN"),
 	DEFINE_RES_IRQ_NAMED(AXP803_IRQ_VBUS_REMOVAL, "VBUS_REMOVAL"),
-	DEFINE_RES_IRQ_NAMED(AXP803_IRQ_BC_USB_CHNG, "BC_USB_CHNG"),
-	DEFINE_RES_IRQ_NAMED(AXP803_IRQ_MV_CHNG, "MV_CHNG"),
 };
 
 static const struct resource axp22x_pek_resources[] = {
@@ -325,25 +314,6 @@ static const struct resource axp288_fuel_gauge_resources[] = {
 static const struct resource axp313a_pek_resources[] = {
 	DEFINE_RES_IRQ_NAMED(AXP313A_IRQ_PEK_RIS_EDGE, "PEK_DBR"),
 	DEFINE_RES_IRQ_NAMED(AXP313A_IRQ_PEK_FAL_EDGE, "PEK_DBF"),
-};
-
-static const struct resource axp803_battery_resources[] = {
-	DEFINE_RES_IRQ_NAMED(AXP803_IRQ_BATT_PLUGIN, "BATT_PLUGIN"),
-	DEFINE_RES_IRQ_NAMED(AXP803_IRQ_BATT_REMOVAL, "BATT_REMOVAL"),
-	DEFINE_RES_IRQ_NAMED(AXP803_IRQ_BATT_ENT_ACT_MODE, "BATT_HEALTH_DEAD"),
-	DEFINE_RES_IRQ_NAMED(AXP803_IRQ_BATT_EXIT_ACT_MODE, "BATT_HEALTH_GOOD"),
-	DEFINE_RES_IRQ_NAMED(AXP803_IRQ_CHARG, "BATT_CHARGING"),
-	DEFINE_RES_IRQ_NAMED(AXP803_IRQ_CHARG_DONE, "BATT_CHARGING_DONE"),
-	DEFINE_RES_IRQ_NAMED(AXP803_IRQ_BATT_CHG_TEMP_HIGH, "BATT_CHG_TEMP_HIGH"),
-	DEFINE_RES_IRQ_NAMED(AXP803_IRQ_BATT_CHG_TEMP_HIGH_END, "BATT_CHG_TEMP_HIGH_END"),
-	DEFINE_RES_IRQ_NAMED(AXP803_IRQ_BATT_CHG_TEMP_LOW, "BATT_CHG_TEMP_LOW"),
-	DEFINE_RES_IRQ_NAMED(AXP803_IRQ_BATT_CHG_TEMP_LOW_END, "BATT_CHG_TEMP_LOW_END"),
-	DEFINE_RES_IRQ_NAMED(AXP803_IRQ_BATT_ACT_TEMP_HIGH, "BATT_ACT_TEMP_HIGH"),
-	DEFINE_RES_IRQ_NAMED(AXP803_IRQ_BATT_ACT_TEMP_HIGH_END, "BATT_ACT_TEMP_HIGH_END"),
-	DEFINE_RES_IRQ_NAMED(AXP803_IRQ_BATT_ACT_TEMP_LOW, "BATT_ACT_TEMP_LOW"),
-	DEFINE_RES_IRQ_NAMED(AXP803_IRQ_BATT_ACT_TEMP_LOW_END, "BATT_ACT_TEMP_LOW_END"),
-	DEFINE_RES_IRQ_NAMED(AXP803_IRQ_LOW_PWR_LVL1, "BATT_LOW_PWR_LVL1"),
-	DEFINE_RES_IRQ_NAMED(AXP803_IRQ_LOW_PWR_LVL2, "BATT_LOW_PWR_LVL2"),
 };
 
 static const struct resource axp803_pek_resources[] = {
@@ -372,7 +342,7 @@ static const struct regmap_config axp152_regmap_config = {
 	.wr_table	= &axp152_writeable_table,
 	.volatile_table	= &axp152_volatile_table,
 	.max_register	= AXP152_PWM1_DUTY_CYCLE,
-	.cache_type	= REGCACHE_RBTREE,
+	.cache_type	= REGCACHE_MAPLE,
 };
 
 static const struct regmap_config axp192_regmap_config = {
@@ -390,7 +360,7 @@ static const struct regmap_config axp20x_regmap_config = {
 	.wr_table	= &axp20x_writeable_table,
 	.volatile_table	= &axp20x_volatile_table,
 	.max_register	= AXP20X_OCV(AXP20X_OCV_MAX),
-	.cache_type	= REGCACHE_RBTREE,
+	.cache_type	= REGCACHE_MAPLE,
 };
 
 static const struct regmap_config axp22x_regmap_config = {
@@ -399,7 +369,7 @@ static const struct regmap_config axp22x_regmap_config = {
 	.wr_table	= &axp22x_writeable_table,
 	.volatile_table	= &axp22x_volatile_table,
 	.max_register	= AXP22X_BATLOW_THRES1,
-	.cache_type	= REGCACHE_RBTREE,
+	.cache_type	= REGCACHE_MAPLE,
 };
 
 static const struct regmap_config axp288_regmap_config = {
@@ -408,7 +378,7 @@ static const struct regmap_config axp288_regmap_config = {
 	.wr_table	= &axp288_writeable_table,
 	.volatile_table	= &axp288_volatile_table,
 	.max_register	= AXP288_FG_TUNE5,
-	.cache_type	= REGCACHE_RBTREE,
+	.cache_type	= REGCACHE_MAPLE,
 };
 
 static const struct regmap_config axp313a_regmap_config = {
@@ -426,7 +396,7 @@ static const struct regmap_config axp806_regmap_config = {
 	.wr_table	= &axp806_writeable_table,
 	.volatile_table	= &axp806_volatile_table,
 	.max_register	= AXP806_REG_ADDR_EXT,
-	.cache_type	= REGCACHE_RBTREE,
+	.cache_type	= REGCACHE_MAPLE,
 };
 
 static const struct regmap_config axp15060_regmap_config = {
@@ -435,7 +405,7 @@ static const struct regmap_config axp15060_regmap_config = {
 	.wr_table	= &axp15060_writeable_table,
 	.volatile_table	= &axp15060_volatile_table,
 	.max_register	= AXP15060_IRQ2_STATE,
-	.cache_type	= REGCACHE_RBTREE,
+	.cache_type	= REGCACHE_MAPLE,
 };
 
 #define INIT_REGMAP_IRQ(_variant, _irq, _off, _mask)			\
@@ -886,8 +856,6 @@ static const struct mfd_cell axp20x_cells[] = {
 	}, {
 		.name		= "axp20x-battery-power-supply",
 		.of_compatible	= "x-powers,axp209-battery-power-supply",
-		.num_resources	= ARRAY_SIZE(axp20x_battery_resources),
-		.resources	= axp20x_battery_resources,
 	}, {
 		.name		= "axp20x-ac-power-supply",
 		.of_compatible	= "x-powers,axp202-ac-power-supply",
@@ -922,8 +890,6 @@ static const struct mfd_cell axp221_cells[] = {
 	}, {
 		.name		= "axp20x-battery-power-supply",
 		.of_compatible	= "x-powers,axp221-battery-power-supply",
-		.num_resources	= ARRAY_SIZE(axp20x_battery_resources),
-		.resources	= axp20x_battery_resources,
 	}, {
 		.name		= "axp20x-usb-power-supply",
 		.of_compatible	= "x-powers,axp221-usb-power-supply",
@@ -946,8 +912,6 @@ static const struct mfd_cell axp223_cells[] = {
 	}, {
 		.name		= "axp20x-battery-power-supply",
 		.of_compatible	= "x-powers,axp221-battery-power-supply",
-		.num_resources	= ARRAY_SIZE(axp20x_battery_resources),
-		.resources	= axp20x_battery_resources,
 	}, {
 		.name		= "axp20x-regulator",
 	}, {
@@ -1052,8 +1016,6 @@ static const struct mfd_cell axp803_cells[] = {
 	}, {
 		.name		= "axp20x-battery-power-supply",
 		.of_compatible	= "x-powers,axp813-battery-power-supply",
-		.num_resources	= ARRAY_SIZE(axp803_battery_resources),
-		.resources	= axp803_battery_resources,
 	}, {
 		.name		= "axp20x-ac-power-supply",
 		.of_compatible	= "x-powers,axp813-ac-power-supply",
@@ -1114,8 +1076,6 @@ static const struct mfd_cell axp813_cells[] = {
 	}, {
 		.name		= "axp20x-battery-power-supply",
 		.of_compatible	= "x-powers,axp813-battery-power-supply",
-		.num_resources	= ARRAY_SIZE(axp803_battery_resources),
-		.resources	= axp803_battery_resources,
 	}, {
 		.name		= "axp20x-ac-power-supply",
 		.of_compatible	= "x-powers,axp813-ac-power-supply",
@@ -1126,9 +1086,6 @@ static const struct mfd_cell axp813_cells[] = {
 		.num_resources	= ARRAY_SIZE(axp803_usb_power_supply_resources),
 		.resources	= axp803_usb_power_supply_resources,
 		.of_compatible	= "x-powers,axp813-usb-power-supply",
-	}, {
-		.name		= "axp20x-charger-led",
-		.of_compatible	= "x-powers,axp813-charger-led",
 	},
 };
 

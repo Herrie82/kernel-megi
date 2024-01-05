@@ -33,8 +33,8 @@ struct dentry;
 #define RKISP1_ISP_SD_SINK			BIT(1)
 
 /* min and max values for the widths and heights of the entities */
-#define RKISP1_ISP_MAX_WIDTH			4416
-#define RKISP1_ISP_MAX_HEIGHT			3312
+#define RKISP1_ISP_MAX_WIDTH			4032
+#define RKISP1_ISP_MAX_HEIGHT			3024
 #define RKISP1_ISP_MIN_WIDTH			32
 #define RKISP1_ISP_MIN_HEIGHT			32
 
@@ -148,7 +148,7 @@ struct rkisp1_info {
  * @port:		port number (0: MIPI, 1: Parallel)
  */
 struct rkisp1_sensor_async {
-	struct v4l2_async_subdev asd;
+	struct v4l2_async_connection asd;
 	unsigned int index;
 	struct fwnode_handle *source_ep;
 	unsigned int lanes;

@@ -496,6 +496,7 @@ config HISI_HIKEY_USB
 config OPEN_DICE
 	tristate "Open Profile for DICE driver"
 	depends on OF_RESERVED_MEM
+	depends on HAS_IOMEM
 	help
 	  This driver exposes a DICE reserved memory region to userspace via
 	  a character device. The memory region contains Compound Device
@@ -504,13 +505,6 @@ config OPEN_DICE
 	  and sealing.
 
 	  If unsure, say N.
-
-config PPKB_POWER_MANAGER
-	tristate "Power manager for Pinephone keyboard."
-	depends on OF
-	help
-	  This driver coordinates Pinephone keyboard power use between Pinephone
-	  keyboard battery and Pinephone battery.
 
 config VCPU_STALL_DETECTOR
 	tristate "Guest vCPU stall detector"
@@ -567,13 +561,6 @@ config TPS6594_PFSM
 
 	  This driver can also be built as a module.  If so, the module
 	  will be called tps6594-pfsm.
-
-config MODEM_POWER
-	tristate "Modem power/wakeup support for EG25, MG3732, etc."
-	depends on OF && SERIAL_DEV_BUS && RFKILL
-	help
-	  This driver provides support for powering up and handling
-	  wakeup signals for various modems.
 
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"

@@ -12,7 +12,9 @@
 #include <linux/mfd/syscon.h>
 #include <linux/module.h>
 #include <linux/of_device.h>
+#include <linux/of_platform.h>
 #include <linux/phy/phy.h>
+#include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/regmap.h>
 
@@ -542,6 +544,8 @@ dw_mipi_dsi_get_lane_mbps(void *priv_data, const struct drm_display_mode *mode,
 {
 	struct dw_mipi_dsi_rockchip *dsi = priv_data;
 	int bpp;
+	unsigned long mpclk, tmp;
+	unsigned int target_mbps = 1000;
 	unsigned int max_mbps = dppa_map[ARRAY_SIZE(dppa_map) - 1].max_mbps;
 	unsigned long best_freq = 0;
 	unsigned long fvco_min, fvco_max, fin, fout;
@@ -559,28 +563,30 @@ dw_mipi_dsi_get_lane_mbps(void *priv_data, const struct drm_display_mode *mode,
 		return bpp;
 	}
 
-	fout = mode->clock * bpp / lanes;
-	if (mode_flags & MIPI_DSI_MODE_VIDEO_BURST)
-		fout = fout * 12 / 10;
-	fout *= MSEC_PER_SEC;
-
-	if (fout > max_mbps * USEC_PER_SEC) {
-		DRM_DEV_ERROR(dsi->dev,
-			      "DPHY clock frequency is out of range\n");
-		return -EINVAL;
+	mpclk = DIV_ROUND_UP(mode->clock, MSEC_PER_SEC);
+	if (mpclk) {
+		/* take 1 / 0.8, since mbps must big than bandwidth of RGB */
+		tmp = mpclk * (bpp / lanes) * 10 / 8;
+		if (tmp < max_mbps)
+			target_mbps = tmp;
+		else
+			DRM_DEV_ERROR(dsi->dev,
+				      "DPHY clock frequency is out of range\n");
 	}
 
-	/* for external phy only the mipi_dphy_config is necessary */
+	/* for external phy only a the mipi_dphy_config is necessary */
 	if (dsi->phy) {
-		phy_mipi_dphy_get_default_config_for_hsclk(fout, lanes,
+		phy_mipi_dphy_get_default_config(mode->clock * 1000 * 10 / 8,
+						 bpp, lanes,
 						 &dsi->phy_opts.mipi_dphy);
-		dsi->lane_mbps = DIV_ROUND_UP(fout, USEC_PER_SEC);
+		dsi->lane_mbps = target_mbps;
 		*lane_mbps = dsi->lane_mbps;
 
 		return 0;
 	}
 
 	fin = clk_get_rate(dsi->pllref_clk);
+	fout = target_mbps * USEC_PER_SEC;
 
 	/* constraint: 5Mhz <= Fref / N <= 40MHz */
 	min_prediv = DIV_ROUND_UP(fin, 40 * USEC_PER_SEC);
@@ -1459,13 +1465,11 @@ static int dw_mipi_dsi_rockchip_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int dw_mipi_dsi_rockchip_remove(struct platform_device *pdev)
+static void dw_mipi_dsi_rockchip_remove(struct platform_device *pdev)
 {
 	struct dw_mipi_dsi_rockchip *dsi = platform_get_drvdata(pdev);
 
 	dw_mipi_dsi_remove(dsi->dmd);
-
-	return 0;
 }
 
 static const struct rockchip_dw_dsi_chip_data px30_chip_data[] = {
@@ -1667,7 +1671,7 @@ MODULE_DEVICE_TABLE(of, dw_mipi_dsi_rockchip_dt_ids);
 
 struct platform_driver dw_mipi_dsi_rockchip_driver = {
 	.probe		= dw_mipi_dsi_rockchip_probe,
-	.remove		= dw_mipi_dsi_rockchip_remove,
+	.remove_new	= dw_mipi_dsi_rockchip_remove,
 	.driver		= {
 		.of_match_table = dw_mipi_dsi_rockchip_dt_ids,
 		.pm	= &dw_mipi_dsi_rockchip_pm_ops,

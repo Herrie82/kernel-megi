@@ -361,4 +361,31 @@ static inline int bes2600_ahb_write_32(u32 addr, u32 val)
 
 #endif
 
+#ifdef CONFIG_BES2600_WLAN_USB
+
+#define BES_AP_WAKEUP_CFG            (1 << 1)
+#define BES_SUBSYSTEM_MCU_DEACTIVE   (1 << 2)
+#define BES_SUBSYSTEM_MCU_ACTIVE     (1 << 3)
+#define BES_SUBSYSTEM_WIFI_DEACTIVE  (1 << 4)
+#define BES_SUBSYSTEM_WIFI_ACTIVE    (1 << 5)
+#define BES_SUBSYSTEM_WIFI_DEBUG     (1 << 6)
+#define BES_SUBSYSTEM_BT_DEACTIVE    (1 << 7)
+#define BES_SUBSYSTEM_BT_ACTIVE      (1 << 8)
+#define BES_SUBSYSTEM_SYSTEM_CLOSE   (1 << 9)
+#define BES_SUBSYSTEM_BT_WAKEUP      (1 << 10)
+#define BES_SUBSYSTEM_BT_SLEEP       (1 << 11)
+/* bit 12, 13, 14 used by spi */
+#define BES_SLAVE_STATUS_REBOOT      (1 << 15)
+
+#define BES_SLAVE_STATUS_MCU_READY          (1 << 0)
+#define BES_SLAVE_STATUS_DPD_READY          (1 << 1)
+#define BES_SLAVE_STATUS_WIFI_READY         (1 << 2)
+#define BES_SLAVE_STATUS_BT_READY           (1 << 3)
+#define BES_SLAVE_STATUS_MCU_WAKEUP_READY   (1 << 4)
+#define BES_SLAVE_STATUS_BT_WAKE_READY      (1 << 5)
+#define BES_SLAVE_STATUS_DPD_LOG_READY      (1 << 6)
+#define BES_SLAVE_STATUS_SEND_DPD_READY     (1 << 7)
+
+#endif /* CONFIG_BES2600_WLAN_USB */
+
 #endif /* BES2600_HWIO_H_INCLUDED */

@@ -104,7 +104,7 @@
 enum qm_stop_reason {
 	QM_NORMAL,
 	QM_SOFT_RESET,
-	QM_FLR,
+	QM_DOWN,
 };
 
 enum qm_state {
@@ -142,6 +142,13 @@ enum qm_debug_file {
 enum qm_vf_state {
 	QM_READY = 0,
 	QM_NOT_READY,
+};
+
+enum qm_misc_ctl_bits {
+	QM_DRIVER_REMOVING = 0x0,
+	QM_RST_SCHED,
+	QM_RESETTING,
+	QM_MODULE_PARAM,
 };
 
 enum qm_cap_bits {

@@ -26,7 +26,11 @@ void bes2600_sta_notify(struct ieee80211_hw *dev, struct ieee80211_vif *vif,
 void bes2600_bss_info_changed(struct ieee80211_hw *dev,
 			     struct ieee80211_vif *vif,
 			     struct ieee80211_bss_conf *info,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0)
 			     u64 changed);
+#else
+			     u32 changed);
+#endif
 
 int bes2600_ampdu_action(struct ieee80211_hw *hw,
 			struct ieee80211_vif *vif,

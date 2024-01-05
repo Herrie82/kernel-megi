@@ -84,19 +84,6 @@ static inline struct f_rndis *func_to_rndis(struct usb_function *f)
 	return container_of(f, struct f_rndis, port.func);
 }
 
-/* peak (theoretical) bulk transfer rate in bits-per-second */
-static unsigned int bitrate(struct usb_gadget *g)
-{
-	if (gadget_is_superspeed(g) && g->speed >= USB_SPEED_SUPER_PLUS)
-		return 4250000000U;
-	if (gadget_is_superspeed(g) && g->speed == USB_SPEED_SUPER)
-		return 3750000000U;
-	else if (gadget_is_dualspeed(g) && g->speed == USB_SPEED_HIGH)
-		return 13 * 512 * 8 * 1000 * 8;
-	else
-		return 19 * 64 * 1 * 1000 * 8;
-}
-
 /*-------------------------------------------------------------------------*/
 
 /*
@@ -640,7 +627,7 @@ static void rndis_open(struct gether *geth)
 	DBG(cdev, "%s\n", __func__);
 
 	rndis_set_param_medium(rndis->params, RNDIS_MEDIUM_802_3,
-				bitrate(cdev->gadget) / 100);
+				gether_bitrate(cdev->gadget) / 100);
 	rndis_signal_connect(rndis->params);
 }
 
@@ -701,14 +688,9 @@ rndis_bind(struct usb_configuration *c, struct usb_function *f)
 	 * with list_for_each_entry, so we assume no race condition
 	 * with regard to rndis_opts->bound access
 	 */
-	mutex_lock(&rndis_opts->lock);
-	gether_set_gadget(rndis_opts->net, cdev->gadget);
-	mutex_unlock(&rndis_opts->lock);
-
 	if (!rndis_opts->bound) {
-		mutex_lock(&rndis_opts->lock);
+		gether_set_gadget(rndis_opts->net, cdev->gadget);
 		status = gether_register_netdev(rndis_opts->net);
-		mutex_unlock(&rndis_opts->lock);
 		if (status)
 			goto fail;
 		rndis_opts->bound = true;
@@ -816,9 +798,7 @@ rndis_bind(struct usb_configuration *c, struct usb_function *f)
 	 * until we're activated via set_alt().
 	 */
 
-	DBG(cdev, "RNDIS: %s speed IN/%s OUT/%s NOTIFY/%s\n",
-			gadget_is_superspeed(c->cdev->gadget) ? "super" :
-			gadget_is_dualspeed(c->cdev->gadget) ? "dual" : "full",
+	DBG(cdev, "RNDIS: IN/%s OUT/%s NOTIFY/%s\n",
 			rndis->port.in_ep->name, rndis->port.out_ep->name,
 			rndis->notify->name);
 	return 0;
@@ -974,9 +954,7 @@ static void rndis_free(struct usb_function *f)
 
 static void rndis_unbind(struct usb_configuration *c, struct usb_function *f)
 {
-	struct f_rndis *rndis = func_to_rndis(f);
-	struct f_rndis_opts *opts = container_of(f->fi, struct f_rndis_opts,
-						 func_inst);
+	struct f_rndis		*rndis = func_to_rndis(f);
 
 	kfree(f->os_desc_table);
 	f->os_desc_n = 0;
@@ -984,8 +962,6 @@ static void rndis_unbind(struct usb_configuration *c, struct usb_function *f)
 
 	kfree(rndis->notify_req->buf);
 	usb_ep_free_request(rndis->notify, rndis->notify_req);
-
-	gether_set_gadget(opts->net, NULL);
 }
 
 static struct usb_function *rndis_alloc(struct usb_function_instance *fi)

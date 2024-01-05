@@ -5,7 +5,27 @@
 #include "wsm.h"
 #include "bes2600_driver_mode.h"
 #include "bes_chardev.h"
+#include "hwio.h"
+
 #define BES2600_USB_PIPE_INVALID BES2600_USB_PIPE_MAX
+
+#define BES2600_USB_VENDOR_REQUEST  ( USB_TYPE_VENDOR | USB_RECIP_DEVICE )
+#define BES2600_USB_VENDOR_REQ_IN   ( USB_DIR_IN | BES2600_USB_VENDOR_REQUEST )  /* 0xC0 */
+#define BES2600_USB_VENDOR_REQ_OUT  ( USB_DIR_OUT | BES2600_USB_VENDOR_REQUEST ) /* 0x40 */
+
+#define BES2600_USB_VENDOR_REQ_REG_READ        (1)
+#define BES2600_USB_VENDOR_REQ_REG_WRITE       (2)
+
+struct bes2600_enum_usb_dev {
+	struct usb_device *udev;
+	bool removed;
+	bool need_enum;
+};
+
+static struct bes2600_enum_usb_dev usb_enum = {
+	.udev = NULL,
+	.removed = false,
+};
 
 struct sbus_priv;
 /* usb device object */
@@ -30,22 +50,22 @@ struct bes2600_usb_pipe {
 struct sbus_priv {
 	/* protects pipe->urb_list_head and  pipe->urb_cnt */
 	spinlock_t cs_lock;
+	struct bes2600_common	*core;
 
 	struct usb_device *udev;
 	struct usb_interface *interface;
 	struct bes2600_usb_pipe pipes[BES2600_USB_PIPE_MAX];
-	u8 *diag_cmd_buffer;
-	u8 *diag_resp_buffer;
-	struct bes2600_common *ar;
 	spinlock_t rx_queue_lock;
 	struct sk_buff_head rx_queue;
-	void * btdev;
+	void *btdev;
 
 	spinlock_t status_lock;
 	sbus_irq_handler usb_irq_handler;
 	void *irq_data;
 	u32 int_control_reg;
 	u32 int_status_reg;
+	u32 io_dmabuf;
+	struct mutex sbus_mutex;
 };
 
 #define BES2600_USB_PIPE_FLAG_TX    (1 << 0)
@@ -56,7 +76,6 @@ struct bes2600_urb_context {
 	struct bes2600_usb_pipe *pipe;
 	struct sk_buff *skb;
 	struct urb *urb;
-	struct bes2600_common *ar;
 };
 
 /* constants */
@@ -73,31 +92,6 @@ struct bes2600_urb_context {
 #define BES2600_USB_EP_ADDR_CTRL_OUT            0x01
 #define BES2600_USB_EP_ADDR_WLAN_OUT            0x02
 #define BES2600_USB_EP_ADDR_BT_OUT              0x03
-
-/* diagnostic command defnitions */
-#define BES2600_USB_CONTROL_REQ_SEND_BMI_CMD        1
-#define BES2600_USB_CONTROL_REQ_RECV_BMI_RESP       2
-#define BES2600_USB_CONTROL_REQ_DIAG_CMD            3
-#define BES2600_USB_CONTROL_REQ_DIAG_RESP           4
-
-#define BES2600_USB_CTRL_DIAG_CC_READ               0
-#define BES2600_USB_CTRL_DIAG_CC_WRITE              1
-
-struct bes2600_usb_ctrl_diag_cmd_write {
-	__le32 cmd;
-	__le32 address;
-	__le32 value;
-	__le32 _pad[1];
-} __packed;
-
-struct bes2600_usb_ctrl_diag_cmd_read {
-	__le32 cmd;
-	__le32 address;
-} __packed;
-
-struct bes2600_usb_ctrl_diag_resp_read {
-	__le32 value;
-} __packed;
 
 /* function declarations */
 static void bes2600_usb_recv_complete(struct urb *urb);
@@ -184,9 +178,9 @@ static void bes2600_usb_cleanup_recv_urb(struct bes2600_urb_context *urb_context
 	bes2600_usb_free_urb_to_pipe(urb_context->pipe, urb_context);
 }
 
-static inline struct sbus_priv *bes2600_usb_priv(struct bes2600_common *ar)
+static inline struct sbus_priv *bes2600_usb_priv(struct bes2600_common *core)
 {
-	return (struct sbus_priv *)ar->sbus_priv;
+	return (struct sbus_priv *)core->sbus_priv;
 }
 
 /* pipe resource allocation/cleanup */
@@ -270,7 +264,7 @@ static void bes2600_usb_cleanup_pipe_resources(struct sbus_priv *ar_usb)
 	int i;
 
 	for (i = 0; i < BES2600_USB_PIPE_MAX; i++){
-		if((i != BES2600_USB_PIPE_RX_BT) &&
+		if ((i != BES2600_USB_PIPE_RX_BT) &&
 		   (i != BES2600_USB_PIPE_TX_BT))
 			bes2600_usb_free_pipe_resources(&ar_usb->pipes[i]);
 	}
@@ -481,7 +475,7 @@ static void bes2600_usb_flush_all(struct sbus_priv *ar_usb)
 	int i;
 
 	for (i = 0; i < BES2600_USB_PIPE_MAX; i++) {
-		if((i != BES2600_USB_PIPE_RX_BT) &&
+		if ((i != BES2600_USB_PIPE_RX_BT) &&
 		   (i !=  BES2600_USB_PIPE_TX_BT)){
 			if (ar_usb->pipes[i].ar_usb != NULL)
 				usb_kill_anchored_urbs(&ar_usb->pipes[i].urb_submitted);
@@ -694,16 +688,21 @@ err:
 	return;
 }
 
-void bes2600_tx_complete(struct bes2600_common *ar, struct sk_buff *skb)
+void bes2600_tx_complete(struct bes2600_common *core, struct sk_buff *skb)
 {
-	//bes2600_htc_tx_complete(ar, skb);
+	//bes2600_htc_tx_complete(core, skb);
 }
 EXPORT_SYMBOL(bes2600_tx_complete);
 
-void bes2600_rx_complete(struct bes2600_common *ar, struct sk_buff *skb, u8 pipe)
+void bes2600_rx_complete(struct bes2600_common *core, struct sk_buff *skb, u8 pipe)
 {
-	//bes2600_htc_rx_complete(ar, skb, pipe);
-	bes2600_usb_rx_complete(ar, skb);
+	//bes2600_htc_rx_complete(core, skb, pipe);
+
+	if (!bes2600_chrdev_is_bus_error())
+		bes2600_usb_rx_complete(core, skb);
+	else if (skb) {
+		dev_kfree_skb(skb);
+	}
 }
 EXPORT_SYMBOL(bes2600_rx_complete);
 
@@ -722,18 +721,15 @@ static void bes2600_usb_io_comp_work(struct work_struct *work)
 		if (pipe->flags & BES2600_USB_PIPE_FLAG_TX) {
 			bes2600_dbg(BES2600_DBG_USB,
 				   "bes2600 usb xmit callback buf:0x%p\n", skb);
-			bes2600_tx_complete(ar_usb->ar, skb);
+			bes2600_tx_complete(ar_usb->core, skb);
 		} else {
 			bes2600_dbg(BES2600_DBG_USB,
 				   "bes2600 usb recv callback buf:0x%p\n", skb);
-			bes2600_rx_complete(ar_usb->ar, skb,
+			bes2600_rx_complete(ar_usb->core, skb,
 						pipe->logical_pipe_num);
 		}
 	}
 }
-
-#define BES2600_USB_MAX_DIAG_CMD (sizeof(struct bes2600_usb_ctrl_diag_cmd_write))
-#define BES2600_USB_MAX_DIAG_RESP (sizeof(struct bes2600_usb_ctrl_diag_resp_read))
 
 static int bes2600_usb_send(struct sbus_priv *self, u8 PipeID, u32 len, u8 *data)
 {
@@ -747,6 +743,10 @@ static int bes2600_usb_send(struct sbus_priv *self, u8 PipeID, u32 len, u8 *data
 	bes2600_dbg(BES2600_DBG_USB, "+%s pipe : %d, buf:0x%p, send_cnt:%d.\n",
 		  	 __func__, PipeID, data, send_cnt);
 
+	if (bes2600_chrdev_is_bus_error()) {
+		bes2600_tx_loop_pipe_send(self->core, data, len);
+		return 0;
+	}
 
 	urb_context = bes2600_usb_alloc_urb_from_pipe(pipe);
 
@@ -802,53 +802,12 @@ fail_hif_send:
 
 static void * bes2600_usb_read(struct sbus_priv *self)
 {
+	if (bes2600_chrdev_is_bus_error())
+		return (void *)bes2600_tx_loop_read(self->core);
+
 	return (void *)bes2600_recv_buf_get(self);
 }
 
-#if 0
-
-static void hif_stop(struct bes2600_common *ar)
-{
-	struct sbus_priv *device = bes2600_usb_priv(ar);
-
-	bes2600_usb_flush_all(device);
-}
-
-static void hif_detach_htc(struct bes2600_common *ar)
-{
-	struct sbus_priv *device = bes2600_usb_priv(ar);
-
-	bes2600_usb_flush_all(device);
-}
-
-/* exported hif usb APIs for htc pipe */
-static void hif_start(struct bes2600_common *ar)
-{
-	struct sbus_priv *device = bes2600_usb_priv(ar);
-	int i;
-
-	bes2600_usb_start_recv_pipes(device);
-
-	/* set the TX resource avail threshold for each TX pipe */
-	for (i = BES2600_USB_PIPE_TX_CTRL;
-	     i <= BES2600_USB_PIPE_BT_TX_DATA; i++) {
-		device->pipes[i].urb_cnt_thresh =
-		    device->pipes[i].urb_alloc / 2;
-	}
-}
-
-static int bes2600_usb_power_on(struct bes2600_common *ar)
-{
-	hif_start(ar);
-	return 0;
-}
-
-static int bes2600_usb_power_off(struct bes2600_common *ar)
-{
-	hif_detach_htc(ar);
-	return 0;
-}
-#endif
 static void bes2600_usb_destroy(struct sbus_priv *ar_usb)
 {
 	bes2600_usb_flush_all(ar_usb);
@@ -856,9 +815,6 @@ static void bes2600_usb_destroy(struct sbus_priv *ar_usb)
 	bes2600_usb_cleanup_pipe_resources(ar_usb);
 
 	usb_set_intfdata(ar_usb->interface, NULL);
-
-	kfree(ar_usb->diag_cmd_buffer);
-	kfree(ar_usb->diag_resp_buffer);
 
 	kfree(ar_usb);
 }
@@ -877,9 +833,10 @@ static struct sbus_priv *bes2600_usb_create(struct usb_interface *interface)
 
 	usb_set_intfdata(interface, ar_usb);
 	spin_lock_init(&(ar_usb->cs_lock));
+	mutex_init(&ar_usb->sbus_mutex);
 	ar_usb->udev = dev;
 	ar_usb->interface = interface;
-	ar_usb->ar = NULL;
+	ar_usb->core = NULL;
 
 	for (i = 0; i < BES2600_USB_PIPE_MAX; i++) {
 		if((i != BES2600_USB_PIPE_RX_BT) &&
@@ -900,19 +857,6 @@ static struct sbus_priv *bes2600_usb_create(struct usb_interface *interface)
 	ar_usb->int_control_reg = 0;
 	ar_usb->int_status_reg = 0;
 
-	ar_usb->diag_cmd_buffer = kzalloc(BES2600_USB_MAX_DIAG_CMD, GFP_KERNEL);
-	if (ar_usb->diag_cmd_buffer == NULL) {
-		status = -ENOMEM;
-		goto fail_bes2600_usb_create;
-	}
-
-	ar_usb->diag_resp_buffer = kzalloc(BES2600_USB_MAX_DIAG_RESP,
-					   GFP_KERNEL);
-	if (ar_usb->diag_resp_buffer == NULL) {
-		status = -ENOMEM;
-		goto fail_bes2600_usb_create;
-	}
-
 	status = bes2600_usb_setup_pipe_resources(ar_usb);
 
 fail_bes2600_usb_create:
@@ -922,313 +866,26 @@ fail_bes2600_usb_create:
 	}
 	return ar_usb;
 }
+
 void bes2600_core_release(struct bes2600_common *self);
 
 static void bes2600_usb_device_detached(struct usb_interface *interface)
 {
 	struct sbus_priv *self = usb_get_intfdata(interface);
 	if (self) {
-		if (self->ar) {
-			bes2600_core_release(self->ar);
-			self->ar = NULL;
+		if (self->core) {
+			bes2600_core_release(self->core);
+			self->core = NULL;
 		}
 		bes2600_usb_destroy(self);
 	}
 }
 
-#if 0
-static void bes2600_usb_get_default_pipe(struct bes2600_common *ar,
-					u8 *ul_pipe, u8 *dl_pipe)
-{
-	*ul_pipe = BES2600_USB_PIPE_TX_CTRL;
-	*dl_pipe = BES2600_USB_PIPE_RX_CTRL;
-}
-
-static int bes2600_usb_map_service_pipe(struct bes2600_common *ar, u16 svc_id,
-				       u8 *ul_pipe, u8 *dl_pipe)
-{
-	int status = 0;
-
-	switch (svc_id) {
-	case HTC_CTRL_RSVD_SVC:
-	case WMI_CONTROL_SVC:
-		*ul_pipe = BES2600_USB_PIPE_TX_CTRL;
-		/* due to large control packets, shift to data pipe */
-		*dl_pipe = BES2600_USB_PIPE_RX_DATA;
-		break;
-	case WMI_DATA_BE_SVC:
-	case WMI_DATA_BK_SVC:
-		*ul_pipe = BES2600_USB_PIPE_TX_DATA_LP;
-		/*
-		* Disable rxdata2 directly, it will be enabled
-		* if FW enable rxdata2
-		*/
-		*dl_pipe = BES2600_USB_PIPE_RX_DATA;
-		break;
-	case WMI_DATA_VI_SVC:
-
-		if (test_bit(BES2600_FW_CAPABILITY_MAP_LP_ENDPOINT,
-			     ar->fw_capabilities))
-			*ul_pipe = BES2600_USB_PIPE_TX_DATA_LP;
-		else
-			*ul_pipe = BES2600_USB_PIPE_TX_DATA_MP;
-		/*
-		* Disable rxdata2 directly, it will be enabled
-		* if FW enable rxdata2
-		*/
-		*dl_pipe = BES2600_USB_PIPE_RX_DATA;
-		break;
-	case WMI_DATA_VO_SVC:
-
-		if (test_bit(BES2600_FW_CAPABILITY_MAP_LP_ENDPOINT,
-			     ar->fw_capabilities))
-			*ul_pipe = BES2600_USB_PIPE_TX_DATA_LP;
-		else
-			*ul_pipe = BES2600_USB_PIPE_TX_DATA_MP;
-		/*
-		* Disable rxdata2 directly, it will be enabled
-		* if FW enable rxdata2
-		*/
-		*dl_pipe = BES2600_USB_PIPE_RX_DATA;
-		break;
-	default:
-		status = -EPERM;
-		break;
-	}
-
-	return status;
-}
-
-static u16 bes2600_usb_get_free_queue_number(struct bes2600_common *ar, u8 pipe_id)
-{
-	struct sbus_priv *device = bes2600_usb_priv(ar);
-
-	return device->pipes[pipe_id].urb_cnt;
-}
-
-static int bes2600_usb_submit_ctrl_out(struct sbus_priv *ar_usb,
-				   u8 req, u16 value, u16 index, void *data,
-				   u32 size)
-{
-	u8 *buf = NULL;
-	int ret;
-
-	if (size > 0) {
-		buf = kmemdup(data, size, GFP_KERNEL);
-		if (buf == NULL)
-			return -ENOMEM;
-	}
-
-	/* note: if successful returns number of bytes transfered */
-	ret = usb_control_msg(ar_usb->udev,
-			      usb_sndctrlpipe(ar_usb->udev, 0),
-			      req,
-			      USB_DIR_OUT | USB_TYPE_VENDOR |
-			      USB_RECIP_DEVICE, value, index, buf,
-			      size, 1000);
-
-	if (ret < 0) {
-		bes2600_warn("Failed to submit usb control message: %d\n", ret);
-		kfree(buf);
-		return ret;
-	}
-
-	kfree(buf);
-
-	return 0;
-}
-
-static int bes2600_usb_submit_ctrl_in(struct sbus_priv *ar_usb,
-				  u8 req, u16 value, u16 index, void *data,
-				  u32 size)
-{
-	u8 *buf = NULL;
-	int ret;
-
-	if (size > 0) {
-		buf = kmalloc(size, GFP_KERNEL);
-		if (buf == NULL)
-			return -ENOMEM;
-	}
-
-	/* note: if successful returns number of bytes transfered */
-	ret = usb_control_msg(ar_usb->udev,
-				 usb_rcvctrlpipe(ar_usb->udev, 0),
-				 req,
-				 USB_DIR_IN | USB_TYPE_VENDOR |
-				 USB_RECIP_DEVICE, value, index, buf,
-				 size, 2 * HZ);
-
-	if (ret < 0) {
-		bes2600_warn("Failed to read usb control message: %d\n", ret);
-		kfree(buf);
-		return ret;
-	}
-
-	memcpy((u8 *) data, buf, size);
-
-	kfree(buf);
-
-	return 0;
-}
-
-static int bes2600_usb_ctrl_msg_exchange(struct sbus_priv *ar_usb,
-				     u8 req_val, u8 *req_buf, u32 req_len,
-				     u8 resp_val, u8 *resp_buf, u32 *resp_len)
-{
-	int ret;
-
-	/* send command */
-	ret = bes2600_usb_submit_ctrl_out(ar_usb, req_val, 0, 0,
-					 req_buf, req_len);
-
-	if (ret != 0)
-		return ret;
-
-	if (resp_buf == NULL) {
-		/* no expected response */
-		return ret;
-	}
-
-	/* get response */
-	ret = bes2600_usb_submit_ctrl_in(ar_usb, resp_val, 0, 0,
-					resp_buf, *resp_len);
-
-	return ret;
-}
-
-static int bes2600_usb_diag_read32(struct bes2600_common *ar, u32 address, u32 *data)
-{
-	struct sbus_priv *ar_usb = ar->sbus_priv;
-	struct bes2600_usb_ctrl_diag_resp_read *resp;
-	struct bes2600_usb_ctrl_diag_cmd_read *cmd;
-	u32 resp_len;
-	int ret;
-
-	cmd = (struct bes2600_usb_ctrl_diag_cmd_read *) ar_usb->diag_cmd_buffer;
-
-	memset(cmd, 0, sizeof(*cmd));
-	cmd->cmd = BES2600_USB_CTRL_DIAG_CC_READ;
-	cmd->address = cpu_to_le32(address);
-	resp_len = sizeof(*resp);
-
-	ret = bes2600_usb_ctrl_msg_exchange(ar_usb,
-				BES2600_USB_CONTROL_REQ_DIAG_CMD,
-				(u8 *) cmd,
-				sizeof(struct bes2600_usb_ctrl_diag_cmd_write),
-				BES2600_USB_CONTROL_REQ_DIAG_RESP,
-				ar_usb->diag_resp_buffer, &resp_len);
-
-	if (ret) {
-		bes2600_warn("diag read32 failed: %d\n", ret);
-		return ret;
-	}
-
-	resp = (struct bes2600_usb_ctrl_diag_resp_read *)
-		ar_usb->diag_resp_buffer;
-
-	*data = le32_to_cpu(resp->value);
-
-	return ret;
-}
-
-static int bes2600_usb_diag_write32(struct bes2600_common *ar, u32 address, __le32 data)
-{
-	struct sbus_priv *ar_usb = ar->sbus_priv;
-	struct bes2600_usb_ctrl_diag_cmd_write *cmd;
-	int ret;
-
-	cmd = (struct bes2600_usb_ctrl_diag_cmd_write *) ar_usb->diag_cmd_buffer;
-
-	memset(cmd, 0, sizeof(struct bes2600_usb_ctrl_diag_cmd_write));
-	cmd->cmd = cpu_to_le32(BES2600_USB_CTRL_DIAG_CC_WRITE);
-	cmd->address = cpu_to_le32(address);
-	cmd->value = data;
-
-	ret = bes2600_usb_ctrl_msg_exchange(ar_usb,
-					   BES2600_USB_CONTROL_REQ_DIAG_CMD,
-					   (u8 *) cmd,
-					   sizeof(*cmd),
-					   0, NULL, NULL);
-	if (ret) {
-		bes2600_warn("diag_write32 failed: %d\n", ret);
-		return ret;
-	}
-
-	return 0;
-}
-
-static int bes2600_usb_bmi_read(struct bes2600_common *ar, u8 *buf, u32 len)
-{
-	struct sbus_priv *ar_usb = ar->sbus_priv;
-	int ret;
-
-	/* get response */
-	ret = bes2600_usb_submit_ctrl_in(ar_usb,
-					BES2600_USB_CONTROL_REQ_RECV_BMI_RESP,
-					0, 0, buf, len);
-	if (ret) {
-		bes2600_err("Unable to read the bmi data from the device: %d\n",
-			   ret);
-		return ret;
-	}
-
-	return 0;
-}
-
-static int bes2600_usb_bmi_write(struct bes2600_common *ar, u8 *buf, u32 len)
-{
-	struct sbus_priv *ar_usb = ar->sbus_priv;
-	int ret;
-
-	/* send command */
-	ret = bes2600_usb_submit_ctrl_out(ar_usb,
-					 BES2600_USB_CONTROL_REQ_SEND_BMI_CMD,
-					 0, 0, buf, len);
-	if (ret) {
-		bes2600_err("unable to send the bmi data to the device: %d\n",
-			   ret);
-		return ret;
-	}
-
-	return 0;
-}
-
-static void bes2600_usb_stop(struct bes2600_common *ar)
-{
-	hif_stop(ar);
-}
-
-static void bes2600_usb_cleanup_scatter(struct bes2600_common *ar)
-{
-	/*
-	 * USB doesn't support it. Just return.
-	 */
-	return;
-}
-
-static int bes2600_usb_suspend(struct bes2600_common *ar, struct cfg80211_wowlan *wow)
-{
-	/*
-	 * cfg80211 suspend/WOW currently not supported for USB.
-	 */
-	return 0;
-}
-
-static int bes2600_usb_resume(struct bes2600_common *ar)
-{
-	/*
-	 * cfg80211 resume currently not supported for USB.
-	 */
-	return 0;
-}
-#endif
-
-static int bes2600_usb_init(struct sbus_priv *self, struct bes2600_common *ar)
+static int bes2600_usb_init(struct sbus_priv *self, struct bes2600_common *core)
 {
 	int queue_empty = -1;
 
-	self->ar = ar;
+	self->core = core;
 	spin_lock_bh(&self->status_lock);
 	self->int_status_reg = 0;
 	self->int_control_reg = 0;
@@ -1239,8 +896,8 @@ static int bes2600_usb_init(struct sbus_priv *self, struct bes2600_common *ar)
 	spin_unlock_bh(&self->rx_queue_lock);
 
 	/* revoke rx work if firmware ready arrived before bes2600 probe done */
-	if(!queue_empty) {
-		bes2600_irq_handler(ar);
+	if (!queue_empty) {
+		bes2600_irq_handler(core);
 	}
 
 	return 0;
@@ -1293,7 +950,7 @@ int bes2600_usb_irq_unsubscribe(struct sbus_priv *self)
 
 int bes2600_usb_reset(struct sbus_priv *self)
 {
-	self->ar = NULL;
+	self->core = NULL;
 	spin_lock_bh(&self->status_lock);
 	self->int_status_reg = 0;
 	self->int_control_reg = 0;
@@ -1346,23 +1003,225 @@ static int bes2600_usb_reg_write(struct sbus_priv *self, u32 reg, const void *sr
 	return ret;
 }
 
-static struct sbus_ops bes2600_usb_ops = {
-	#if 0
-	.diag_read32 = bes2600_usb_diag_read32,
-	.diag_write32 = bes2600_usb_diag_write32,
-	.bmi_read = bes2600_usb_bmi_read,
-	.bmi_write = bes2600_usb_bmi_write,
-	.power_on = bes2600_usb_power_on,
-	.power_off = bes2600_usb_power_off,
-	.stop = bes2600_usb_stop,
+static int bes2600_usb_ioread(struct sbus_priv *sbus_priv, u32 *r_val)
+{
+	u32 val;
+	int ret = 0;
 
-	.pipe_get_default = bes2600_usb_get_default_pipe,
-	.pipe_map_service = bes2600_usb_map_service_pipe,
-	.pipe_get_free_queue_number = bes2600_usb_get_free_queue_number,
-	.cleanup_scatter = bes2600_usb_cleanup_scatter,
-	.suspend = bes2600_usb_suspend,
-	.resume = bes2600_usb_resume,
-	#endif
+	sbus_priv->io_dmabuf = 0;
+	ret = usb_control_msg(sbus_priv->udev, usb_rcvctrlpipe(sbus_priv->udev, 0),
+	                      BES2600_USB_VENDOR_REQ_REG_READ, BES2600_USB_VENDOR_REQ_IN,
+	                      0, 0, &sbus_priv->io_dmabuf, sizeof(sbus_priv->io_dmabuf), HZ / 2);
+
+	if (ret == sizeof(sbus_priv->io_dmabuf)) {
+		val = le32_to_cpu(sbus_priv->io_dmabuf);
+		*r_val = val;
+		ret = 0;
+	} else {
+		ret = -EIO;
+	}
+
+	return ret;
+}
+
+int bes2600_usb_iowrite(struct sbus_priv *sbus_priv, u32 val)
+{
+	int ret = 0;
+
+	sbus_priv->io_dmabuf = cpu_to_le32(val);
+	ret = usb_control_msg(sbus_priv->udev, usb_sndctrlpipe(sbus_priv->udev, 0),
+	                      BES2600_USB_VENDOR_REQ_REG_WRITE, BES2600_USB_VENDOR_REQ_OUT,
+	                      0, 0, &sbus_priv->io_dmabuf, sizeof(sbus_priv->io_dmabuf), HZ / 2);
+
+	if (ret > 0)
+		ret = 0;
+
+	return ret;
+}
+
+static int bes2600_usb_reboot(struct sbus_priv *self)
+{
+	int ret;
+
+	mutex_lock(&self->sbus_mutex);
+	ret = bes2600_usb_iowrite(self, BES_SLAVE_STATUS_REBOOT);
+	mutex_unlock(&self->sbus_mutex);
+
+	return ret;
+}
+
+static void bes2600_check_usb_dev_state(void)
+{
+	if (usb_enum.udev && !usb_enum.removed)
+		usb_enum.need_enum = true;
+	else
+		usb_enum.need_enum = false;
+}
+
+static void bes2600_enum_usb_dev(void)
+{
+	int ret;
+	u32 *val;
+
+	if (!usb_enum.need_enum)
+		return;
+
+	val = kmalloc(sizeof(*val), GFP_KERNEL);
+	if (!val) {
+		ret = -ENOMEM;
+		goto exit;
+	}
+
+	*val = cpu_to_le32(BES_SLAVE_STATUS_REBOOT);
+	ret = usb_control_msg(usb_enum.udev, usb_sndctrlpipe(usb_enum.udev, 0),
+	                      BES2600_USB_VENDOR_REQ_REG_WRITE, BES2600_USB_VENDOR_REQ_OUT,
+	                      0, 0, val, sizeof(*val), HZ / 2);
+
+	kfree(val);
+	usb_enum.removed = false;
+
+exit:
+	if (ret <= 0)
+		bes2600_err(BES2600_DBG_USB, "%s fail, ret: %d\n", __func__, ret);
+}
+
+int bes2600_usb_wait_status(struct sbus_priv *sbus_priv, u32 rd_status, bool target_val, u32 wait, u32 timeout)
+{
+	int ret = 0;
+	u8 retry = 0;
+	u32 val = 0;
+	u32 retry_max = timeout / wait;
+
+	do {
+		msleep(wait);
+		ret = bes2600_usb_ioread(sbus_priv, &val);
+	} while(!((ret == 0) && (((val & rd_status) == target_val * rd_status))) && ++retry < retry_max);
+
+	bes2600_dbg(BES2600_DBG_USB, "%s, val: %u, rd_status: %u, wait: %u, timeout: %u, retry_max: %u, retry: %u\n", __func__,
+	val, rd_status, wait, timeout, retry_max, retry);
+
+	if (!ret && (((val & rd_status) != target_val * rd_status)))
+		ret = -ETIMEDOUT;
+
+	if (ret)
+		bes2600_err(BES2600_DBG_USB, "%s failed, ret: %d\n", __func__, ret);
+
+	return ret;
+}
+
+static int bes2600_usb_active(struct sbus_priv *self, int sub_system)
+{
+	u16 cfg;
+	u8 cfm = 0;
+	int ret = 0;
+
+	/* nosignal mode only allow SUBSYSTEM_WIFI */
+	if (!bes2600_chrdev_is_signal_mode() && sub_system != SUBSYSTEM_WIFI)
+		return -EINVAL;
+
+	/* don't read/write usb when usb error */
+	if (bes2600_chrdev_is_bus_error())
+		return 0;
+
+	/* prevent concurrent access */
+	mutex_lock(&self->sbus_mutex);
+
+	/* set config and confirm value */
+	if (sub_system == SUBSYSTEM_MCU) {
+		cfg = BES_SUBSYSTEM_MCU_ACTIVE;
+		cfm = BES_SLAVE_STATUS_MCU_WAKEUP_READY;
+	} else if (sub_system == SUBSYSTEM_WIFI) {
+		cfg = BES_SUBSYSTEM_WIFI_ACTIVE;
+		cfm = BES_SLAVE_STATUS_WIFI_READY;
+	} else if (sub_system == SUBSYSTEM_BT) {
+		cfg = BES_SUBSYSTEM_BT_ACTIVE;
+		cfm = BES_SLAVE_STATUS_BT_READY;
+	} else if (sub_system == SUBSYSTEM_BT_LP) {
+		cfg = BES_SUBSYSTEM_BT_WAKEUP;
+		cfm = BES_SLAVE_STATUS_BT_WAKE_READY;
+	} else {
+		mutex_unlock(&self->sbus_mutex);
+		return -EINVAL;
+	}
+
+	ret = bes2600_usb_iowrite(self, cfg);
+	if (ret) {
+		bes2600_err(BES2600_DBG_USB, "%s failed, ret: %d\n", __func__, ret);
+		goto err;
+	}
+
+	ret = bes2600_usb_wait_status(self, cfm, true, 5, 100);
+	if (ret)
+		bes2600_err(BES2600_DBG_USB, "%s, %u confirm failed\n", __func__, cfm);
+
+	mutex_unlock(&self->sbus_mutex);
+
+	return ret;
+
+err:
+	mutex_unlock(&self->sbus_mutex);
+
+	bes2600_chrdev_wifi_force_close(self->core, false);
+	return -ENODEV;
+}
+
+static int bes2600_usb_deactive(struct sbus_priv *self, int sub_system)
+{
+	u16 cfg;
+	u8 cfm = 0;
+	int ret = 0;
+
+	/* nosignal mode only allow SUBSYSTEM_WIFI */
+	if (!bes2600_chrdev_is_signal_mode() && sub_system != SUBSYSTEM_WIFI)
+		return -EINVAL;
+
+	/* don't read/write usb when usb error */
+	if (bes2600_chrdev_is_bus_error())
+		return 0;
+
+	/* prevent concurrent access */
+	mutex_lock(&self->sbus_mutex);
+
+	/* set config and confirm value */
+	if (sub_system == SUBSYSTEM_MCU) {
+		cfg = BES_SUBSYSTEM_MCU_DEACTIVE;
+		cfm = BES_SLAVE_STATUS_MCU_WAKEUP_READY;
+	} else if (sub_system == SUBSYSTEM_WIFI) {
+		cfg = BES_SUBSYSTEM_WIFI_DEACTIVE;
+		cfm = BES_SLAVE_STATUS_WIFI_READY;
+	} else if(sub_system == SUBSYSTEM_BT) {
+		cfg = BES_SUBSYSTEM_BT_DEACTIVE;
+		cfm = BES_SLAVE_STATUS_BT_READY;
+	} else if(sub_system == SUBSYSTEM_BT_LP) {
+		cfg = BES_SUBSYSTEM_BT_SLEEP;
+		cfm = BES_SLAVE_STATUS_BT_WAKE_READY;
+	} else {
+		mutex_unlock(&self->sbus_mutex);
+		return -EINVAL;
+	}
+
+	ret = bes2600_usb_iowrite(self, cfg);
+	if (ret) {
+		bes2600_err(BES2600_DBG_USB, "%s failed, ret: %d\n", __func__, ret);
+		goto err;
+	}
+
+	ret = bes2600_usb_wait_status(self, cfm, false, 5, 100);
+	if (ret)
+		bes2600_err(BES2600_DBG_USB, "%s, %u confirm failed\n", __func__, cfm);
+
+	mutex_unlock(&self->sbus_mutex);
+
+	return ret;
+
+err:
+	mutex_unlock(&self->sbus_mutex);
+
+	bes2600_chrdev_wifi_force_close(self->core, false);
+	return -ENODEV;
+}
+
+static struct sbus_ops bes2600_usb_ops = {
 	.init				= bes2600_usb_init,
 	.sbus_memcpy_fromio	= bes2600_usb_memcpy_fromio,
 	.sbus_memcpy_toio	= bes2600_usb_memcpy_toio,
@@ -1377,6 +1236,9 @@ static struct sbus_ops bes2600_usb_ops = {
 	.pipe_read = bes2600_usb_read,
 	.sbus_reg_read = bes2600_usb_reg_read,
 	.sbus_reg_write = bes2600_usb_reg_write,
+	.sbus_active	= bes2600_usb_active,
+	.sbus_deactive	= bes2600_usb_deactive,
+	.reboot			= bes2600_usb_reboot,
 };
 
 
@@ -1385,15 +1247,21 @@ static int bes2600_usb_probe(struct usb_interface *interface,
 			    const struct usb_device_id *id)
 {
 	struct usb_device *dev = NULL;
-	struct bes2600_common *ar;
 	struct sbus_priv *self = NULL;
 	int vendor_id, product_id;
 	int ret = 0;
 
 	bes2600_chrdev_update_signal_mode();
+	bes2600_dbg(BES2600_DBG_USB, "%s type:%d sig_mode:%d\n", __func__,
+			bes2600_chrdev_get_fw_type(), bes2600_chrdev_is_signal_mode());
+
+	bes2600_chrdev_bus_probe_notify();
 
 	dev = interface_to_usbdev(interface);
 	usb_get_dev(dev);
+
+	usb_enum.udev = dev;
+	usb_enum.removed = false;
 
 	vendor_id = le16_to_cpu(dev->descriptor.idVendor);
 	product_id = le16_to_cpu(dev->descriptor.idProduct);
@@ -1420,23 +1288,24 @@ static int bes2600_usb_probe(struct usb_interface *interface,
 
 	bes2600_usb_start_recv_pipes(self);
 
-	bes2600_chrdev_update_signal_mode();
-	bes2600_dbg(BES2600_DBG_USB, "%s type:%d sig_mode:%d\n", __func__,
-			bes2600_chrdev_get_fw_type(), bes2600_chrdev_is_signal_mode());
-
 	//bes2600_reg_set_object(&bes2600_usb_ops, self);
-	if ((ret = bes2600_load_firmware(&bes2600_usb_ops, self)) < 0) {
-		bes2600_err(BES2600_DBG_USB, "bes2600_load_firmware failed(%d)\n", ret);
+	ret = bes2600_load_firmware(&bes2600_usb_ops, self);
+	if (ret)
 		goto err_core_free;
-	}
 
-	ret = bes2600_core_probe(&bes2600_usb_ops, (struct sbus_priv*)self, &self->udev->dev, &ar);
+	/* for wifi closed case */
+	if (!bes2600_chrdev_is_wifi_opened())
+		goto out;
+
+	ret = bes2600_core_probe(&bes2600_usb_ops, self, &self->udev->dev, &self->core);
 	if (ret) {
 		bes2600_err(BES2600_DBG_USB, "Failed to init bes2600 core: %d\n", ret);
 		goto err_core_free;
 	}
 
-	return ret;
+out:
+	bes2600_chrdev_set_sbus_priv_data(self, false);
+	return 0;
 
 err_core_free:
 #ifdef CONFIG_BES2600_BT
@@ -1445,8 +1314,10 @@ err_core_free:
 	bes2600_usb_destroy(self);
 err_usb_put:
 	usb_put_dev(dev);
+	bes2600_chrdev_set_sbus_priv_data(NULL, true);
+	usb_set_intfdata(interface, NULL);
 
-	return ret;
+	return 0;
 }
 
 int bes2600_register_net_dev(struct sbus_priv *bus_priv)
@@ -1454,16 +1325,16 @@ int bes2600_register_net_dev(struct sbus_priv *bus_priv)
 	int status = 0;
 	BUG_ON(!bus_priv);
 	status = bes2600_core_probe(&bes2600_usb_ops,
-			      bus_priv, &bus_priv->udev->dev, &bus_priv->ar);
+			      bus_priv, &bus_priv->udev->dev, &bus_priv->core);
 	return status;
 }
 
 int bes2600_unregister_net_dev(struct sbus_priv *bus_priv)
 {
 	BUG_ON(!bus_priv);
-	if (bus_priv->ar) {
-		bes2600_core_release(bus_priv->ar);
-		bus_priv->ar = NULL;
+	if (bus_priv->core) {
+		bes2600_core_release(bus_priv->core);
+		bus_priv->core = NULL;
 	}
 	return 0;
 }
@@ -1471,16 +1342,23 @@ int bes2600_unregister_net_dev(struct sbus_priv *bus_priv)
 bool bes2600_is_net_dev_created(struct sbus_priv *bus_priv)
 {
 	BUG_ON(!bus_priv);
-	return (bus_priv->ar != NULL);
+	return (bus_priv->core != NULL);
 }
 
 static void bes2600_usb_remove(struct usb_interface *interface)
 {
+	struct sbus_priv *self = usb_get_intfdata(interface);
+
+	if (self) {
 #ifdef CONFIG_BES2600_BT
-	bes2600_btusb_uninit(interface);
+		bes2600_btusb_uninit(interface);
 #endif
-	usb_put_dev(interface_to_usbdev(interface));
-	bes2600_usb_device_detached(interface);
+		usb_put_dev(interface_to_usbdev(interface));
+		bes2600_chrdev_usb_remove(self->core);
+		bes2600_usb_device_detached(interface);
+	}
+	bes2600_chrdev_set_sbus_priv_data(NULL, false);
+	usb_enum.removed = true;
 }
 
 #ifdef CONFIG_PM
@@ -1518,8 +1396,6 @@ static const struct usb_device_id bes2600_usb_ids[] = {
 
 MODULE_DEVICE_TABLE(usb, bes2600_usb_ids);
 
-
-
 static struct usb_driver bes2600_usb_driver = {
 	.name = "bes2600_usb",
 	.probe = bes2600_usb_probe,
@@ -1533,22 +1409,41 @@ static struct usb_driver bes2600_usb_driver = {
 
 static int __init bes2600_usb_module_init(void)
 {
+	int ret;
+
 	bes2600_info(BES2600_DBG_USB, "------Driver: bes2600.ko version :%s\n", BES2600_DRV_VERSION);
-	return usb_register_driver(&bes2600_usb_driver , THIS_MODULE, "BES2600");
+
+	bes2600_chrdev_update_signal_mode();
+
+	ret = bes2600_chrdev_init(&bes2600_usb_ops);
+	if(ret)
+		goto err_chardev;
+
+	bes2600_chrdev_start_bus_probe();
+
+	ret = usb_register_driver(&bes2600_usb_driver , THIS_MODULE, "BES2600");
+	if (ret)
+		goto err_register;
+
+	return 0;
+
+err_register:
+	bes2600_chrdev_free();
+err_chardev:
+	return ret;
 }
 
 static void __exit bes2600_usb_module_exit(void)
 {
+	bes2600_check_usb_dev_state();
 	usb_deregister(&bes2600_usb_driver);
+	bes2600_chrdev_free();
+	bes2600_enum_usb_dev();
 }
 
 module_init(bes2600_usb_module_init);
 module_exit(bes2600_usb_module_exit);
 
 MODULE_AUTHOR("Bestechnic, Inc.");
-MODULE_DESCRIPTION("Driver support for BEST2000 wireless USB devices");
+MODULE_DESCRIPTION("Driver support for BES2600 wireless USB devices");
 MODULE_LICENSE("Dual BSD/GPL");
-
-
-
-

@@ -517,19 +517,19 @@ int bes2600_spi_set_block_size(struct sbus_priv *self, size_t size)
 	return 0;
 }
 
-int bes2600_spi_send(struct bes2600_common *ar, u8 pipe, u32 len, u8 *buf)
+int bes2600_spi_send(struct bes2600_common *core, u8 pipe, u32 len, u8 *buf)
 {
 	return 0;
 }
 
-void * bes2600_spi_read(struct bes2600_common *ar)
+void * bes2600_spi_read(struct bes2600_common *core)
 {
 	return 0;
 }
 
 static int bes2600_spi_reg_write(struct sbus_priv *self, u32 reg,
 					const void *src, int count);
-static int bes2600_spi_init(struct sbus_priv *self, struct bes2600_common *ar)
+static int bes2600_spi_init(struct sbus_priv *self, struct bes2600_common *core)
 {
 	int ret = 0;
 	//u32 cfg_val;
@@ -567,7 +567,7 @@ static int bes2600_spi_init(struct sbus_priv *self, struct bes2600_common *ar)
 	bes2600_info(BES2600_DBG_SPI, "%s, buf_addr:%p:%p(%d)\n", __func__,
 			self->tx_dummy_buf, self->rx_dummy_buf, get_order((1632 + 24) * MAX_SEND_PACKETS_NUM));
 #endif
-	self->core = ar;
+	self->core = core;
 
 	self->lmac_ptr_top = 0;
 	self->lmac_ptr = 0;

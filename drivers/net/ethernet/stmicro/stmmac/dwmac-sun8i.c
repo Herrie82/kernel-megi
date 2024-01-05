@@ -11,9 +11,10 @@
 #include <linux/mdio-mux.h>
 #include <linux/mfd/syscon.h>
 #include <linux/module.h>
-#include <linux/of_device.h>
+#include <linux/of.h>
 #include <linux/of_mdio.h>
 #include <linux/of_net.h>
+#include <linux/of_platform.h>
 #include <linux/phy.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
@@ -59,9 +60,7 @@ struct emac_variant {
 
 /* struct sunxi_priv_data - hold all sunxi private data
  * @ephy_clk:	reference to the optional EPHY clock for the internal PHY
- * @regulator_phy: reference to the optional regulator
- * @regulator_phy_io: reference to the optional regulator for
- *		PHY I/O pins
+ * @regulator:	reference to the optional regulator
  * @rst_ephy:	reference to the optional EPHY reset for the internal PHY
  * @variant:	reference to the current board variant
  * @regmap:	regmap for using the syscon
@@ -71,8 +70,7 @@ struct emac_variant {
  */
 struct sunxi_priv_data {
 	struct clk *ephy_clk;
-	struct regulator *regulator_phy;
-	struct regulator *regulator_phy_io;
+	struct regulator *regulator;
 	struct reset_control *rst_ephy;
 	const struct emac_variant *variant;
 	struct regmap_field *regmap_field;
@@ -443,8 +441,10 @@ static int sun8i_dwmac_dma_interrupt(struct stmmac_priv *priv,
 				     struct stmmac_extra_stats *x, u32 chan,
 				     u32 dir)
 {
-	u32 v;
+	struct stmmac_rxq_stats *rxq_stats = &priv->xstats.rxq_stats[chan];
+	struct stmmac_txq_stats *txq_stats = &priv->xstats.txq_stats[chan];
 	int ret = 0;
+	u32 v;
 
 	v = readl(ioaddr + EMAC_INT_STA);
 
@@ -455,7 +455,9 @@ static int sun8i_dwmac_dma_interrupt(struct stmmac_priv *priv,
 
 	if (v & EMAC_TX_INT) {
 		ret |= handle_tx;
-		x->tx_normal_irq_n++;
+		u64_stats_update_begin(&txq_stats->syncp);
+		txq_stats->tx_normal_irq_n++;
+		u64_stats_update_end(&txq_stats->syncp);
 	}
 
 	if (v & EMAC_TX_DMA_STOP_INT)
@@ -477,7 +479,9 @@ static int sun8i_dwmac_dma_interrupt(struct stmmac_priv *priv,
 
 	if (v & EMAC_RX_INT) {
 		ret |= handle_rx;
-		x->rx_normal_irq_n++;
+		u64_stats_update_begin(&rxq_stats->syncp);
+		rxq_stats->rx_normal_irq_n++;
+		u64_stats_update_end(&rxq_stats->syncp);
 	}
 
 	if (v & EMAC_RX_BUF_UA_INT)
@@ -585,16 +589,12 @@ static int sun8i_dwmac_init(struct platform_device *pdev, void *priv)
 	struct sunxi_priv_data *gmac = priv;
 	int ret;
 
-	ret = regulator_enable(gmac->regulator_phy_io);
-	if (ret) {
-		dev_err(&pdev->dev, "Fail to enable PHY I/O regulator\n");
-		return ret;
-	}
-
-	ret = regulator_enable(gmac->regulator_phy);
-	if (ret) {
-		dev_err(&pdev->dev, "Fail to enable PHY regulator\n");
-		goto err_disable_regulator_phy_io;
+	if (gmac->regulator) {
+		ret = regulator_enable(gmac->regulator);
+		if (ret) {
+			dev_err(&pdev->dev, "Fail to enable regulator\n");
+			return ret;
+		}
 	}
 
 	if (gmac->use_internal_phy) {
@@ -606,9 +606,8 @@ static int sun8i_dwmac_init(struct platform_device *pdev, void *priv)
 	return 0;
 
 err_disable_regulator:
-	regulator_disable(gmac->regulator_phy);
-err_disable_regulator_phy_io:
-	regulator_disable(gmac->regulator_phy_io);
+	if (gmac->regulator)
+		regulator_disable(gmac->regulator);
 
 	return ret;
 }
@@ -1017,7 +1016,7 @@ static int sun8i_dwmac_set_syscon(struct device *dev,
 	if (gmac->variant->support_rmii)
 		reg &= ~SYSCON_RMII_EN;
 
-	switch (plat->interface) {
+	switch (plat->mac_interface) {
 	case PHY_INTERFACE_MODE_MII:
 		/* default */
 		break;
@@ -1032,7 +1031,7 @@ static int sun8i_dwmac_set_syscon(struct device *dev,
 		break;
 	default:
 		dev_err(dev, "Unsupported interface mode: %s",
-			phy_modes(plat->interface));
+			phy_modes(plat->mac_interface));
 		return -EINVAL;
 	}
 
@@ -1055,8 +1054,8 @@ static void sun8i_dwmac_exit(struct platform_device *pdev, void *priv)
 	if (gmac->variant->soc_has_internal_phy)
 		sun8i_dwmac_unpower_internal_phy(gmac);
 
-	regulator_disable(gmac->regulator_phy);
-	regulator_disable(gmac->regulator_phy_io);
+	if (gmac->regulator)
+		regulator_disable(gmac->regulator);
 }
 
 static void sun8i_dwmac_set_mac_loopback(void __iomem *ioaddr, bool enable)
@@ -1178,16 +1177,13 @@ static int sun8i_dwmac_probe(struct platform_device *pdev)
 	}
 
 	/* Optional regulator for PHY */
-	gmac->regulator_phy = devm_regulator_get(dev, "phy");
-	if (IS_ERR(gmac->regulator_phy))
-		return dev_err_probe(dev, PTR_ERR(gmac->regulator_phy),
-				     "Failed to get PHY regulator\n");
-
-	/* Optional regulator for PHY I/O pins */
-	gmac->regulator_phy_io = devm_regulator_get(dev, "phy-io");
-	if (IS_ERR(gmac->regulator_phy_io))
-		return dev_err_probe(dev, PTR_ERR(gmac->regulator_phy_io),
-				     "Failed to get PHY I/O regulator\n");
+	gmac->regulator = devm_regulator_get_optional(dev, "phy");
+	if (IS_ERR(gmac->regulator)) {
+		if (PTR_ERR(gmac->regulator) == -EPROBE_DEFER)
+			return -EPROBE_DEFER;
+		dev_info(dev, "No regulator found\n");
+		gmac->regulator = NULL;
+	}
 
 	/* The "GMAC clock control" register might be located in the
 	 * CCU address range (on the R40), or the system control address
@@ -1235,10 +1231,10 @@ static int sun8i_dwmac_probe(struct platform_device *pdev)
 	/* platform data specifying hardware features and callbacks.
 	 * hardware features were copied from Allwinner drivers.
 	 */
-	plat_dat->interface = interface;
+	plat_dat->mac_interface = interface;
 	plat_dat->rx_coe = STMMAC_RX_COE_TYPE2;
 	plat_dat->tx_coe = 1;
-	plat_dat->has_sun8i = true;
+	plat_dat->flags |= STMMAC_FLAG_HAS_SUN8I;
 	plat_dat->bsp_priv = gmac;
 	plat_dat->init = sun8i_dwmac_init;
 	plat_dat->exit = sun8i_dwmac_exit;

@@ -47,35 +47,15 @@ static struct ccu_nkmp pll_cpux_clk = {
  * With sigma-delta modulation for fractional-N on the audio PLL,
  * we have to use specific dividers. This means the variable divider
  * can no longer be used, as the audio codec requests the exact clock
- * rates we support through this mechanism.
- *
- * For the audio codec to work correctly, pll-audio must be exactly
- * 22579200 Hz or 24576000 Hz, and pll-audio-4x (1x the base) must be
- * between 3x and 8x that frequency. For the SRC to work at 96 kHz,
- * pll-audio-4x must be at least 6x pll-audio.
- *
- * For now, hard code the variable divider to 3.
+ * rates we support through this mechanism. So we now hard code the
+ * variable divider to 1. This means the clock rates will no longer
+ * match the clock names.
  */
 #define SUN50I_A64_PLL_AUDIO_REG	0x008
-#define SUN50I_A64_PLL_AUDIO_BIAS_REG	0x224
 
 static struct ccu_sdm_setting pll_audio_sdm_table[] = {
-	/* 24000000 * (  7 + 0x10d84 / 131072 ) /  8 / 1 - 22579200 == -6.9Hz */
-	{ .rate =  22579200, .pattern = 0xc0010d84, .m =  8, .n =  7 },
-	/* 24000000 * ( 14 + 0x0ac02 / 131072 ) / 14 / 1 - 24576000 == -2.5Hz */
-	{ .rate =  24576000, .pattern = 0xc000ac08, .m = 14, .n = 14 },
-	/* 24000000 * (  8 + 0x0ef35 / 131072 ) /  3 / 3 - 22579200 ==  3.3Hz */
-	{ .rate =  67737600, .pattern = 0xc000ef35, .m =  3, .n =  8 },
-	/* 24000000 * ( 15 + 0x0b852 / 131072 ) /  5 / 3 - 24576000 ==  1.0Hz */
-	{ .rate =  73728000, .pattern = 0xc000b852, .m =  5, .n = 15 },
-	/* 24000000 * (  7 + 0x10d84 / 131072 ) /  2 / 4 - 22579200 == -6.9Hz */
-	{ .rate =  90316800, .pattern = 0xc0010d84, .m =  2, .n =  7 },
-	/* 24000000 * ( 16 + 0x0c49c / 131072 ) /  4 / 4 - 24576000 ==  4.0Hz */
-	{ .rate =  98304000, .pattern = 0xc000c49c, .m =  4, .n = 16 },
-	/* 24000000 * (  5 + 0x14a23 / 131072 ) /  1 / 6 - 22579200 == -6.9Hz */
-	{ .rate = 135475200, .pattern = 0xc0014a23, .m =  1, .n =  5 },
-	/* 24000000 * ( 12 + 0x09375 / 131072 ) /  2 / 6 - 24576000 ==  4.0Hz */
-	{ .rate = 147456000, .pattern = 0xc0009375, .m =  2, .n = 12 },
+	{ .rate = 22579200, .pattern = 0xc0010d84, .m = 8, .n = 7 },
+	{ .rate = 24576000, .pattern = 0xc000ac02, .m = 14, .n = 14 },
 };
 
 static SUNXI_CCU_NM_WITH_SDM_GATE_LOCK(pll_audio_base_clk, "pll-audio-base",
@@ -88,7 +68,7 @@ static SUNXI_CCU_NM_WITH_SDM_GATE_LOCK(pll_audio_base_clk, "pll-audio-base",
 				       BIT(28),	/* lock */
 				       CLK_SET_RATE_UNGATE);
 
-static SUNXI_CCU_NM_WITH_FRAC_GATE_LOCK_MIN_MAX(pll_video0_clk, "pll-video0",
+static SUNXI_CCU_NM_WITH_FRAC_GATE_LOCK_MIN_MAX_CLOSEST(pll_video0_clk, "pll-video0",
 						"osc24M", 0x010,
 						192000000,	/* Minimum rate */
 						1008000000,	/* Maximum rate */
@@ -199,7 +179,9 @@ static struct ccu_nkm pll_mipi_clk = {
 	.common		= {
 		.reg		= 0x040,
 		.hw.init	= CLK_HW_INIT("pll-mipi", "pll-video0",
-					      &ccu_nkm_ops, CLK_SET_RATE_UNGATE),
+					      &ccu_nkm_ops,
+					      CLK_SET_RATE_UNGATE | CLK_SET_RATE_PARENT),
+		.features	= CCU_FEATURE_CLOSEST_RATE,
 	},
 };
 
@@ -556,25 +538,18 @@ static SUNXI_CCU_M_WITH_MUX_GATE(de_clk, "de", de_parents,
 
 static const char * const tcon0_parents[] = { "pll-mipi", "pll-video0-2x" };
 static const u8 tcon0_table[] = { 0, 2, };
-static SUNXI_CCU_MUX_TABLE_WITH_GATE(tcon0_clk, "tcon0", tcon0_parents,
-				     tcon0_table, 0x118, 24, 3, BIT(31),
-				     CLK_SET_RATE_PARENT |
-				     CLK_SET_RATE_NO_REPARENT);
+static SUNXI_CCU_MUX_TABLE_WITH_GATE_CLOSEST(tcon0_clk, "tcon0", tcon0_parents,
+					     tcon0_table, 0x118, 24, 3, BIT(31),
+					     CLK_SET_RATE_PARENT | CLK_SET_RATE_NO_REPARENT);
 
 static const char * const tcon1_parents[] = { "pll-video0", "pll-video1" };
 static const u8 tcon1_table[] = { 0, 2, };
-static struct ccu_div tcon1_clk = {
-	.enable		= BIT(31),
-	.div		= _SUNXI_CCU_DIV(0, 4),
-	.mux		= _SUNXI_CCU_MUX_TABLE(24, 2, tcon1_table),
-	.common		= {
-		.reg		= 0x11c,
-		.hw.init	= CLK_HW_INIT_PARENTS("tcon1",
-						      tcon1_parents,
-						      &ccu_div_ops,
-						      CLK_SET_RATE_PARENT),
-	},
-};
+static SUNXI_CCU_M_WITH_MUX_TABLE_GATE_CLOSEST(tcon1_clk, "tcon1", tcon1_parents,
+					       tcon1_table, 0x11c,
+					       0, 4,	/* M */
+					       24, 2,	/* mux */
+					       BIT(31),	/* gate */
+					       CLK_SET_RATE_PARENT);
 
 static const char * const deinterlace_parents[] = { "pll-periph0", "pll-periph1" };
 static SUNXI_CCU_M_WITH_MUX_GATE(deinterlace_clk, "deinterlace", deinterlace_parents,
@@ -604,8 +579,8 @@ static SUNXI_CCU_GATE(avs_clk,		"avs",		"osc24M",
 		      0x144, BIT(31), 0);
 
 static const char * const hdmi_parents[] = { "pll-video0", "pll-video1" };
-static SUNXI_CCU_M_WITH_MUX_GATE(hdmi_clk, "hdmi", hdmi_parents,
-				 0x150, 0, 4, 24, 2, BIT(31), CLK_SET_RATE_PARENT);
+static SUNXI_CCU_M_WITH_MUX_GATE_CLOSEST(hdmi_clk, "hdmi", hdmi_parents,
+					 0x150, 0, 4, 24, 2, BIT(31), CLK_SET_RATE_PARENT);
 
 static SUNXI_CCU_GATE(hdmi_ddc_clk,	"hdmi-ddc",	"osc24M",
 		      0x154, BIT(31), 0);
@@ -617,9 +592,9 @@ static SUNXI_CCU_M_WITH_MUX_GATE(mbus_clk, "mbus", mbus_parents,
 
 static const char * const dsi_dphy_parents[] = { "pll-video0", "pll-periph0" };
 static const u8 dsi_dphy_table[] = { 0, 2, };
-static SUNXI_CCU_M_WITH_MUX_TABLE_GATE(dsi_dphy_clk, "dsi-dphy",
-				       dsi_dphy_parents, dsi_dphy_table,
-				       0x168, 0, 4, 8, 2, BIT(15), CLK_SET_RATE_PARENT);
+static SUNXI_CCU_M_WITH_MUX_TABLE_GATE_CLOSEST(dsi_dphy_clk, "dsi-dphy",
+					       dsi_dphy_parents, dsi_dphy_table,
+					       0x168, 0, 4, 8, 2, BIT(15), CLK_SET_RATE_PARENT);
 
 static SUNXI_CCU_M_WITH_GATE(gpu_clk, "gpu", "pll-gpu",
 			     0x1a0, 0, 3, BIT(31), CLK_SET_RATE_PARENT);
@@ -631,10 +606,10 @@ static const struct clk_hw *clk_parent_pll_audio[] = {
 	&pll_audio_base_clk.common.hw
 };
 
-/* We hardcode the divider to 3 for now */
+/* We hardcode the divider to 1 for now */
 static CLK_FIXED_FACTOR_HWS(pll_audio_clk, "pll-audio",
 			    clk_parent_pll_audio,
-			    3, 1, CLK_SET_RATE_PARENT);
+			    1, 1, CLK_SET_RATE_PARENT);
 static CLK_FIXED_FACTOR_HWS(pll_audio_2x_clk, "pll-audio-2x",
 			    clk_parent_pll_audio,
 			    2, 1, CLK_SET_RATE_PARENT);
@@ -963,19 +938,6 @@ static struct ccu_mux_nb sun50i_a64_cpu_nb = {
 	.bypass_index	= 1, /* index of 24 MHz oscillator */
 };
 
-/*
- * Since PLL-Video0 is an ancestor of both tcon0 and HDMI PYH, tcon0 clock will
- * conflict with HDMI PHY clock which is on another display pipeline.
- *
- * Therefore, a notifier is required to restore the rate of TCON0 when the rate
- * of PLL-Video0 changed.
- */
-static struct ccu_rate_reset_nb sun50i_a64_pll_video0_reset_tcon0_nb = {
-	.common		= &pll_video0_clk.common,
-};
-
-#define CCU_MIPI_DSI_CLK 0x168
-
 static int sun50i_a64_ccu_probe(struct platform_device *pdev)
 {
 	void __iomem *reg;
@@ -986,24 +948,13 @@ static int sun50i_a64_ccu_probe(struct platform_device *pdev)
 	if (IS_ERR(reg))
 		return PTR_ERR(reg);
 
-	/* Force the pll-audio variable divider to 3 */
+	/* Force the PLL-Audio-1x divider to 1 */
 	val = readl(reg + SUN50I_A64_PLL_AUDIO_REG);
 	val &= ~GENMASK(19, 16);
-	writel(val | (2 << 16), reg + SUN50I_A64_PLL_AUDIO_REG);
+	writel(val | (0 << 16), reg + SUN50I_A64_PLL_AUDIO_REG);
 
-	/* Decrease the PLL AUDIO bias current to reduce noise. */
-	writel(0x10040000, reg + SUN50I_A64_PLL_AUDIO_BIAS_REG);
+	writel(0x515, reg + SUN50I_A64_PLL_MIPI_REG);
 
-	ret = of_property_read_u32_index(of_chosen, "p-boot,framebuffer-start", 0, &val);
-	if (ret) {
-		writel(0x515, reg + SUN50I_A64_PLL_MIPI_REG);
-
-		/* Set MIPI-DSI clock parent to periph0(1x), so that video0(1x) is free to change. */
-		val = readl(reg + CCU_MIPI_DSI_CLK);
-		val &= 0x30f;
-		val |= (2 << 8) | ((4 - 1) << 0); /* M-1 */
-		writel(val, reg + CCU_MIPI_DSI_CLK);
-	}
 	/* Set PLL MIPI as parent for TCON0 */
 	val = readl(reg + SUN50I_A64_TCON0_CLK_REG);
 	val &= ~GENMASK(26, 24);
@@ -1019,10 +970,6 @@ static int sun50i_a64_ccu_probe(struct platform_device *pdev)
 	/* Reparent CPU during PLL CPU rate changes */
 	ccu_mux_notifier_register(pll_cpux_clk.common.hw.clk,
 				  &sun50i_a64_cpu_nb);
-
-	/* Reset the rate of TCON0 clock when PLL-VIDEO0 is changed */
-	sun50i_a64_pll_video0_reset_tcon0_nb.target_clk = tcon0_clk.common.hw.clk;
-	ccu_rate_reset_notifier_register(&sun50i_a64_pll_video0_reset_tcon0_nb);
 
 	return 0;
 }

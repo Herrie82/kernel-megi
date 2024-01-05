@@ -67,7 +67,7 @@ void bes2600_tx_loop_clear_wsm_cmd(struct bes2600_common *hw_priv)
         hw_priv->tx_loop.wsm_cmd_ptr = NULL;
 }
 
-void bes2600_tx_loop_set_enable(struct bes2600_common *hw_priv)
+void bes2600_tx_loop_set_enable(struct bes2600_common *hw_priv, bool need_warn)
 {
         int i = 0;
         u16 cmd_id = -1;
@@ -78,7 +78,8 @@ void bes2600_tx_loop_set_enable(struct bes2600_common *hw_priv)
         if(hw_priv->tx_loop.enabled)
                 return;
 
-        WARN_ON(1);
+        WARN_ON(need_warn);
+
         hw_priv->tx_loop.enabled = true;
         hw_priv->tx_loop.start_lmac_seq = hw_priv->wsm_rx_seq[0];
         hw_priv->tx_loop.start_mcu_seq = hw_priv->wsm_rx_seq[1];

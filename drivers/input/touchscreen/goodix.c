@@ -22,7 +22,6 @@
 #include <linux/slab.h>
 #include <linux/acpi.h>
 #include <linux/of.h>
-#include <linux/debugfs.h>
 #include <asm/unaligned.h>
 #include "goodix.h"
 
@@ -521,13 +520,9 @@ static void goodix_free_irq(struct goodix_ts_data *ts)
 
 static int goodix_request_irq(struct goodix_ts_data *ts)
 {
-	unsigned long irq_flags = ts->irq_flags;
-	if (ts->use_dt_irqflags)
-		irq_flags = IRQF_ONESHOT;
-
 	return devm_request_threaded_irq(&ts->client->dev, ts->client->irq,
 					 NULL, goodix_ts_irq_handler,
-					 irq_flags, ts->client->name, ts);
+					 ts->irq_flags, ts->client->name, ts);
 }
 
 static int goodix_check_cfg_8(struct goodix_ts_data *ts, const u8 *cfg, int len)
@@ -905,6 +900,25 @@ static int goodix_add_acpi_gpio_mappings(struct goodix_ts_data *ts)
 		dev_info(dev, "No ACPI GpioInt resource, assuming that the GPIO order is reset, int\n");
 		ts->irq_pin_access_method = IRQ_PIN_ACCESS_ACPI_GPIO;
 		gpio_mapping = acpi_goodix_int_last_gpios;
+	} else if (ts->gpio_count == 1 && ts->gpio_int_idx == 0) {
+		/*
+		 * On newer devices there is only 1 GpioInt resource and _PS0
+		 * does the whole reset sequence for us.
+		 */
+		acpi_device_fix_up_power(ACPI_COMPANION(dev));
+
+		/*
+		 * Before the _PS0 call the int GPIO may have been in output
+		 * mode and the call should have put the int GPIO in input mode,
+		 * but the GPIO subsys cached state may still think it is
+		 * in output mode, causing gpiochip_lock_as_irq() failure.
+		 *
+		 * Add a mapping for the int GPIO to make the
+		 * gpiod_int = gpiod_get(..., GPIOD_IN) call succeed,
+		 * which will explicitly set the direction to input.
+		 */
+		ts->irq_pin_access_method = IRQ_PIN_ACCESS_NONE;
+		gpio_mapping = acpi_goodix_int_first_gpios;
 	} else {
 		dev_warn(dev, "Unexpected ACPI resources: gpio_count %d, gpio_int_idx %d\n",
 			 ts->gpio_count, ts->gpio_int_idx);
@@ -940,7 +954,6 @@ static int goodix_add_acpi_gpio_mappings(struct goodix_ts_data *ts)
  */
 static int goodix_get_gpio_config(struct goodix_ts_data *ts)
 {
-	int error;
 	struct device *dev;
 	struct gpio_desc *gpiod;
 	bool added_acpi_mappings = false;
@@ -956,33 +969,20 @@ static int goodix_get_gpio_config(struct goodix_ts_data *ts)
 	ts->gpiod_rst_flags = GPIOD_IN;
 
 	ts->avdd28 = devm_regulator_get(dev, "AVDD28");
-	if (IS_ERR(ts->avdd28)) {
-		error = PTR_ERR(ts->avdd28);
-		if (error != -EPROBE_DEFER)
-			dev_err(dev,
-				"Failed to get AVDD28 regulator: %d\n", error);
-		return error;
-	}
+	if (IS_ERR(ts->avdd28))
+		return dev_err_probe(dev, PTR_ERR(ts->avdd28), "Failed to get AVDD28 regulator\n");
 
 	ts->vddio = devm_regulator_get(dev, "VDDIO");
-	if (IS_ERR(ts->vddio)) {
-		error = PTR_ERR(ts->vddio);
-		if (error != -EPROBE_DEFER)
-			dev_err(dev,
-				"Failed to get VDDIO regulator: %d\n", error);
-		return error;
-	}
+	if (IS_ERR(ts->vddio))
+		return dev_err_probe(dev, PTR_ERR(ts->vddio), "Failed to get VDDIO regulator\n");
 
 retry_get_irq_gpio:
 	/* Get the interrupt GPIO pin number */
 	gpiod = devm_gpiod_get_optional(dev, GOODIX_GPIO_INT_NAME, GPIOD_IN);
-	if (IS_ERR(gpiod)) {
-		error = PTR_ERR(gpiod);
-		if (error != -EPROBE_DEFER)
-			dev_err(dev, "Failed to get %s GPIO: %d\n",
-				GOODIX_GPIO_INT_NAME, error);
-		return error;
-	}
+	if (IS_ERR(gpiod))
+		return dev_err_probe(dev, PTR_ERR(gpiod), "Failed to get %s GPIO\n",
+				     GOODIX_GPIO_INT_NAME);
+
 	if (!gpiod && has_acpi_companion(dev) && !added_acpi_mappings) {
 		added_acpi_mappings = true;
 		if (goodix_add_acpi_gpio_mappings(ts) == 0)
@@ -993,13 +993,9 @@ retry_get_irq_gpio:
 
 	/* Get the reset line GPIO pin number */
 	gpiod = devm_gpiod_get_optional(dev, GOODIX_GPIO_RST_NAME, ts->gpiod_rst_flags);
-	if (IS_ERR(gpiod)) {
-		error = PTR_ERR(gpiod);
-		if (error != -EPROBE_DEFER)
-			dev_err(dev, "Failed to get %s GPIO: %d\n",
-				GOODIX_GPIO_RST_NAME, error);
-		return error;
-	}
+	if (IS_ERR(gpiod))
+		return dev_err_probe(dev, PTR_ERR(gpiod), "Failed to get %s GPIO\n",
+				     GOODIX_GPIO_RST_NAME);
 
 	ts->gpiod_rst = gpiod;
 
@@ -1030,16 +1026,6 @@ retry_get_irq_gpio:
 
 	return 0;
 }
-
-static int ts_config_bin_show(struct seq_file *s, void *data)
-{
-        struct goodix_ts_data *ts = s->private;
-
-        seq_write(s, ts->config, ts->chip->config_len);
-
-        return 0;
-}
-DEFINE_SHOW_ATTRIBUTE(ts_config_bin);
 
 /**
  * goodix_read_config - Read the embedded configuration of the panel
@@ -1079,10 +1065,6 @@ static void goodix_read_config(struct goodix_ts_data *ts)
 	}
 
 	ts->chip->calc_config_checksum(ts);
-
-        ts->debug_root = debugfs_create_dir("goodix", NULL);
-        debugfs_create_file("config.bin", 0444, ts->debug_root, ts,
-                            &ts_config_bin_fops);
 }
 
 /**
@@ -1311,7 +1293,6 @@ static void goodix_disable_regulators(void *arg)
 
 static int goodix_ts_probe(struct i2c_client *client)
 {
-	struct device_node *np = client->dev.of_node;
 	struct goodix_ts_data *ts;
 	const char *cfg_name;
 	int error;
@@ -1327,12 +1308,10 @@ static int goodix_ts_probe(struct i2c_client *client)
 	if (!ts)
 		return -ENOMEM;
 
-	ts->use_dt_irqflags = of_property_read_bool(np, "use-dt-irq-flags");
 	ts->client = client;
 	i2c_set_clientdata(client, ts);
 	init_completion(&ts->firmware_loading_complete);
 	ts->contact_size = GOODIX_CONTACT_SIZE;
-	ts->poweroff_in_suspend = of_property_read_bool(np, "poweroff-in-suspend");
 
 	error = goodix_get_gpio_config(ts);
 	if (error)
@@ -1429,8 +1408,6 @@ static void goodix_ts_remove(struct i2c_client *client)
 
 	if (ts->load_cfg_from_disk)
 		wait_for_completion(&ts->firmware_loading_complete);
-
-        debugfs_remove(ts->debug_root);
 }
 
 static int goodix_suspend(struct device *dev)
@@ -1441,15 +1418,6 @@ static int goodix_suspend(struct device *dev)
 
 	if (ts->load_cfg_from_disk)
 		wait_for_completion(&ts->firmware_loading_complete);
-
-	if (ts->poweroff_in_suspend) {
-		goodix_free_irq(ts);
-		goodix_irq_direction_output(ts, 0);
-		gpiod_direction_output(ts->gpiod_rst, 0);
-		regulator_disable(ts->avdd28);
-		regulator_disable(ts->vddio);
-		return 0;
-	}
 
 	/* We need gpio pins to suspend/resume */
 	if (ts->irq_pin_access_method == IRQ_PIN_ACCESS_NONE) {
@@ -1495,33 +1463,6 @@ static int goodix_resume(struct device *dev)
 	struct goodix_ts_data *ts = i2c_get_clientdata(client);
 	u8 config_ver;
 	int error;
-
-	if (ts->poweroff_in_suspend) {
-		error = regulator_enable(ts->avdd28);
-		if (error) {
-			dev_err(dev, "Regulator avdd28 enable failed.\n");
-			return error;
-		}
-
-		error = regulator_enable(ts->vddio);
-		if (error) {
-			regulator_disable(ts->avdd28);
-			dev_err(dev, "Regulator vddio enable failed.\n");
-			return error;
-		}
-
-		error = goodix_reset(ts);
-		if (error) {
-			dev_err(dev, "Controller reset failed.\n");
-			return error;
-		}
-
-		error = goodix_request_irq(ts);
-		if (error)
-			return error;
-
-		return 0;
-	}
 
 	if (ts->irq_pin_access_method == IRQ_PIN_ACCESS_NONE) {
 		enable_irq(client->irq);
@@ -1577,6 +1518,7 @@ MODULE_DEVICE_TABLE(i2c, goodix_ts_id);
 static const struct acpi_device_id goodix_acpi_match[] = {
 	{ "GDIX1001", 0 },
 	{ "GDIX1002", 0 },
+	{ "GDX9110", 0 },
 	{ }
 };
 MODULE_DEVICE_TABLE(acpi, goodix_acpi_match);

@@ -17,6 +17,7 @@
 #include <linux/bitops.h>
 #include <linux/mailbox_client.h>
 #include <linux/mailbox_controller.h>
+#include <linux/of.h>
 
 #include "mailbox.h"
 
@@ -83,12 +84,10 @@ exit:
 	spin_unlock_irqrestore(&chan->lock, flags);
 
 	if (!err && (chan->txdone_method & TXDONE_BY_POLL)) {
-		if (!timekeeping_suspended) {
-			/* kick start the timer immediately to avoid delays */
-			spin_lock_irqsave(&chan->mbox->poll_hrt_lock, flags);
-			hrtimer_start(&chan->mbox->poll_hrt, 0, HRTIMER_MODE_REL);
-			spin_unlock_irqrestore(&chan->mbox->poll_hrt_lock, flags);
-		}
+		/* kick start the timer immediately to avoid delays */
+		spin_lock_irqsave(&chan->mbox->poll_hrt_lock, flags);
+		hrtimer_start(&chan->mbox->poll_hrt, 0, HRTIMER_MODE_REL);
+		spin_unlock_irqrestore(&chan->mbox->poll_hrt_lock, flags);
 	}
 }
 
@@ -269,24 +268,6 @@ int mbox_send_message(struct mbox_chan *chan, void *mssg)
 	}
 
 	msg_submit(chan);
-
-	if (chan->cl->tx_block && timekeeping_suspended) {
-		int i = chan->cl->tx_tout * 10;
-		bool txdone;
-
-		while (i--) {
-			txdone = chan->mbox->ops->last_tx_done(chan);
-			if (txdone) {
-				tx_tick(chan, 0);
-				return 0;
-			}
-
-			udelay(100);
-		}
-
-		tx_tick(chan, -ETIME);
-		return -ETIME;
-	}
 
 	if (chan->cl->tx_block) {
 		unsigned long wait;

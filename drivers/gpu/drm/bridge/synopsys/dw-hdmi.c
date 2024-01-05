@@ -9,13 +9,12 @@
 #include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/err.h>
-#include <linux/extcon.h>
 #include <linux/hdmi.h>
 #include <linux/i2c.h>
 #include <linux/irq.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
-#include <linux/of_device.h>
+#include <linux/of.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/regmap.h>
 #include <linux/dma-mapping.h>
@@ -49,20 +48,6 @@
 #define SCDC_MIN_SOURCE_VERSION	0x1
 
 #define HDMI14_MAX_TMDSCLK	340000000
-
-enum hdmi_datamap {
-	RGB444_8B = 0x01,
-	RGB444_10B = 0x03,
-	RGB444_12B = 0x05,
-	RGB444_16B = 0x07,
-	YCbCr444_8B = 0x09,
-	YCbCr444_10B = 0x0B,
-	YCbCr444_12B = 0x0D,
-	YCbCr444_16B = 0x0F,
-	YCbCr422_8B = 0x16,
-	YCbCr422_10B = 0x14,
-	YCbCr422_12B = 0x12,
-};
 
 static const u16 csc_coeff_default[3][4] = {
 	{ 0x2000, 0x0000, 0x0000, 0x0000 },
@@ -212,8 +197,6 @@ struct dw_hdmi {
 	hdmi_codec_plugged_cb plugged_cb;
 	struct device *codec_dev;
 	enum drm_connector_status last_connector_result;
-	struct extcon_dev *extcon;
-	struct notifier_block extcon_nb;
 };
 
 #define HDMI_IH_PHY_STAT0_RX_SENSE \
@@ -859,10 +842,10 @@ static void dw_hdmi_gp_audio_enable(struct dw_hdmi *hdmi)
 
 	if (pdata->enable_audio)
 		pdata->enable_audio(hdmi,
-					    hdmi->channels,
-					    hdmi->sample_width,
-					    hdmi->sample_rate,
-					    hdmi->sample_non_pcm);
+				    hdmi->channels,
+				    hdmi->sample_width,
+				    hdmi->sample_rate,
+				    hdmi->sample_non_pcm);
 }
 
 static void dw_hdmi_gp_audio_disable(struct dw_hdmi *hdmi)
@@ -1706,12 +1689,6 @@ static void dw_hdmi_phy_disable(struct dw_hdmi *hdmi, void *data)
 enum drm_connector_status dw_hdmi_phy_read_hpd(struct dw_hdmi *hdmi,
 					       void *data)
 {
-	if (hdmi->extcon) {
-		return extcon_get_state(hdmi->extcon, EXTCON_DISP_HDMI) > 0
-			? connector_status_connected
-			: connector_status_disconnected;
-	}
-
 	return hdmi_readb(hdmi, HDMI_PHY_STAT0) & HDMI_PHY_HPD ?
 		connector_status_connected : connector_status_disconnected;
 }
@@ -1722,7 +1699,7 @@ void dw_hdmi_phy_update_hpd(struct dw_hdmi *hdmi, void *data,
 {
 	u8 old_mask = hdmi->phy_mask;
 
-	if (force || disabled || !rxsense || hdmi->extcon)
+	if (force || disabled || !rxsense)
 		hdmi->phy_mask |= HDMI_PHY_RX_SENSE;
 	else
 		hdmi->phy_mask &= ~HDMI_PHY_RX_SENSE;
@@ -2472,15 +2449,7 @@ static enum drm_connector_status dw_hdmi_detect(struct dw_hdmi *hdmi)
 	enum drm_connector_status result;
 
 	result = hdmi->phy.ops->read_hpd(hdmi, hdmi->phy.data);
-
-	mutex_lock(&hdmi->mutex);
-	if (result != hdmi->last_connector_result) {
-		dev_info(hdmi->dev, "read_hpd result: %d", result);
-		handle_plugged_change(hdmi,
-				      result == connector_status_connected);
-		hdmi->last_connector_result = result;
-	}
-	mutex_unlock(&hdmi->mutex);
+	hdmi->last_connector_result = result;
 
 	return result;
 }
@@ -2719,9 +2688,10 @@ static u32 *dw_hdmi_bridge_atomic_get_output_bus_fmts(struct drm_bridge *bridge,
 		/* Default 8bit fallback */
 		output_fmts[i++] = MEDIA_BUS_FMT_UYYVYY8_0_5X24;
 
-		*num_output_fmts = i;
-
-		return output_fmts;
+		if (drm_mode_is_420_only(info, mode)) {
+			*num_output_fmts = i;
+			return output_fmts;
+		}
 	}
 
 	/*
@@ -2980,6 +2950,7 @@ static void dw_hdmi_bridge_atomic_disable(struct drm_bridge *bridge,
 	hdmi->curr_conn = NULL;
 	dw_hdmi_update_power(hdmi);
 	dw_hdmi_update_phy_mask(hdmi);
+	handle_plugged_change(hdmi, false);
 	mutex_unlock(&hdmi->mutex);
 }
 
@@ -2998,6 +2969,7 @@ static void dw_hdmi_bridge_atomic_enable(struct drm_bridge *bridge,
 	hdmi->curr_conn = connector;
 	dw_hdmi_update_power(hdmi);
 	dw_hdmi_update_phy_mask(hdmi);
+	handle_plugged_change(hdmi, true);
 	mutex_unlock(&hdmi->mutex);
 }
 
@@ -3152,8 +3124,8 @@ static irqreturn_t dw_hdmi_irq(int irq, void *dev_id)
 			status = connector_status_disconnected;
 	}
 
-	if (status != connector_status_unknown && !hdmi->extcon) {
-		dev_info(hdmi->dev, "EVENT=%s\n",
+	if (status != connector_status_unknown) {
+		dev_dbg(hdmi->dev, "EVENT=%s\n",
 			status == connector_status_connected ?
 			"plugin" : "plugout");
 
@@ -3355,24 +3327,11 @@ static int dw_hdmi_parse_dt(struct dw_hdmi *hdmi)
 	return 0;
 }
 
-static int dw_hdmi_extcon_notifier(struct notifier_block *nb,
-				   unsigned long event, void *ptr)
+bool dw_hdmi_bus_fmt_is_420(struct dw_hdmi *hdmi)
 {
-	struct dw_hdmi *hdmi = container_of(nb, struct dw_hdmi, extcon_nb);
-
-	enum drm_connector_status status = dw_hdmi_phy_read_hpd(hdmi, NULL);
-
-	dev_info(hdmi->dev, "EVENT=%s\n",
-		 status == connector_status_connected ? "plugin" : "plugout");
-
-	if (hdmi->bridge.dev) {
-		//XXX: ???
-		drm_helper_hpd_irq_event(hdmi->bridge.dev);
-		drm_bridge_hpd_notify(&hdmi->bridge, status);
-	}
-
-	return NOTIFY_DONE;
+	return hdmi_bus_fmt_is_yuv420(hdmi->hdmi_data.enc_out_bus_format);
 }
+EXPORT_SYMBOL_GPL(dw_hdmi_bus_fmt_is_420);
 
 struct dw_hdmi *dw_hdmi_probe(struct platform_device *pdev,
 			      const struct dw_hdmi_plat_data *plat_data)
@@ -3415,38 +3374,15 @@ struct dw_hdmi *dw_hdmi_probe(struct platform_device *pdev,
 	if (ret < 0)
 		return ERR_PTR(ret);
 
-	hdmi->extcon = extcon_get_edev_by_phandle(dev, 0);
-	if (IS_ERR(hdmi->extcon)) {
-		if (PTR_ERR(hdmi->extcon) == -ENODEV) {
-			hdmi->extcon = NULL;
-		} else {
-			if (PTR_ERR(hdmi->extcon) != -EPROBE_DEFER)
-				dev_err(dev, "Invalid or missing extcon\n");
-			return ERR_CAST(hdmi->extcon);
-		}
-	}
-
-	if (hdmi->extcon) {
-		/* don't register IRQ for native HPD */
-		hdmi->phy_mask = (u8)~(HDMI_PHY_RX_SENSE);
-
-		hdmi->extcon_nb.notifier_call = dw_hdmi_extcon_notifier;
-		ret = extcon_register_notifier_all(hdmi->extcon, &hdmi->extcon_nb);
-		if (ret < 0) {
-			dev_err(dev, "failed to register extcon notifier\n");
-			return ERR_PTR(ret);
-		}
-	}
-
 	ddc_node = of_parse_phandle(np, "ddc-i2c-bus", 0);
 	if (ddc_node) {
 		hdmi->ddc = of_get_i2c_adapter_by_node(ddc_node);
 		of_node_put(ddc_node);
 		if (!hdmi->ddc) {
 			dev_dbg(hdmi->dev, "failed to read ddc node\n");
-			ret = -EPROBE_DEFER;
-			goto err_extcon;
+			return ERR_PTR(-EPROBE_DEFER);
 		}
+
 	} else {
 		dev_dbg(hdmi->dev, "no ddc property found\n");
 	}
@@ -3691,8 +3627,6 @@ err_isfr:
 	clk_disable_unprepare(hdmi->isfr_clk);
 err_res:
 	i2c_put_adapter(hdmi->ddc);
-err_extcon:
-	extcon_unregister_notifier_all(hdmi->extcon, &hdmi->extcon_nb);
 
 	return ERR_PTR(ret);
 }
@@ -3700,8 +3634,6 @@ EXPORT_SYMBOL_GPL(dw_hdmi_probe);
 
 void dw_hdmi_remove(struct dw_hdmi *hdmi)
 {
-	extcon_unregister_notifier_all(hdmi->extcon, &hdmi->extcon_nb);
-
 	drm_bridge_remove(&hdmi->bridge);
 
 	if (hdmi->audio && !IS_ERR(hdmi->audio))
